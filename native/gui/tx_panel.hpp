@@ -34,6 +34,7 @@ class QTimer;
 namespace sstvae::gui {
 
 class AppState;
+class ErrorBanner;
 class OverlayEditor;
 
 // The output level is stored as a peak amplitude (`transmit.level`,
@@ -113,6 +114,7 @@ private:
 
     AppState* app_ = nullptr;
     OverlayEditor* editor_ = nullptr;
+    ErrorBanner* banner_ = nullptr;
 
     QPushButton* choose_button_ = nullptr;
     QLabel* image_label_ = nullptr;
@@ -155,6 +157,14 @@ private:
     // An edit arrived while a send was in progress; re-arm once it is
     // over rather than moving the ground under it.
     bool restart_after_send_ = false;
+
+    // Edge detection for the log: `on_state` fires on every playback
+    // progress tick, so phase transitions are logged only when the
+    // phase actually changes.
+    int last_logged_phase_ = -1;
+    // The optimizer's finished result is logged once per run, not once
+    // per progress callback.
+    bool optimizer_result_logged_ = false;
 };
 
 }  // namespace sstvae::gui

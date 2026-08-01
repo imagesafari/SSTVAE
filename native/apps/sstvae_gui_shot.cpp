@@ -27,6 +27,9 @@
 #include <string>
 
 #include "app_state.hpp"
+#include "banner.hpp"
+#include "log/log.hpp"
+#include "log_pane.hpp"
 #include "settings/settings.hpp"
 #include "settings_dialog.hpp"
 #include "tx_panel.hpp"
@@ -41,6 +44,7 @@ void usage() {
                  "  --size WxH   window size (default: the window's own)\n"
                  "  --tab N      only this settings tab; default is all\n"
                  "  --transmit   also shoot the transmit panel\n"
+                 "  --log        also shoot the log pane and error banner\n"
                  "\n"
                  "Writes settings-<n>-<name>.png, one per tab.\n");
 }
@@ -71,6 +75,7 @@ int main(int argc, char** argv) {
     int height = 0;
     int only_tab = -1;
     bool transmit = false;
+    bool log_widgets = false;
 
     const QStringList args = QCoreApplication::arguments();
     for (int i = 1; i < args.size(); ++i) {
@@ -89,6 +94,8 @@ int main(int argc, char** argv) {
             only_tab = args[++i].toInt();
         } else if (arg == QLatin1String("--transmit")) {
             transmit = true;
+        } else if (arg == QLatin1String("--log")) {
+            log_widgets = true;
         } else {
             usage();
             return 2;
@@ -120,6 +127,44 @@ int main(int argc, char** argv) {
         const QString path = QStringLiteral("%1/transmit.png").arg(out);
         panel.grab().save(path);
         std::printf("%s\n", path.toLocal8Bit().constData());
+    }
+
+    // The observability widgets, with representative content: the pane
+    // filled from a preloaded log, and the banner showing the message
+    // whose survivability is the whole reason it exists.
+    if (log_widgets) {
+        sstvae::log::StatusLog log;
+        log.append("app", sstvae::log::Severity::Warning,
+                   "config: receive.decode_every: not a number; using default");
+        log.append("rig", sstvae::log::Severity::Info,
+                   "Rig: 14.2300 MHz (Elecraft K4)");
+        log.append("rx", sstvae::log::Severity::Info,
+                   "sync acquired: mode B de KD8XYZ");
+        log.append("rx", sstvae::log::Severity::Info,
+                   "reception complete: mode B de KD8XYZ, 32/32 frames,  SNR "
+                   "8.3dB -- saved /home/op/Pictures/rx/KD8XYZ-B-14230.png");
+        log.append("tx", sstvae::log::Severity::Info, "keying rig");
+        log.append("tx", sstvae::log::Severity::Error,
+                   "PTT OFF FAILED: read timeout -- the rig may still be "
+                   "transmitting. Unkey it manually.");
+        sstvae::gui::LogPane pane(&log);
+        pane.resize(width > 0 ? width : 1000, 180);
+        pane.show();
+        app.processEvents();
+        const QString pane_path = QStringLiteral("%1/log-pane.png").arg(out);
+        pane.grab().save(pane_path);
+        std::printf("%s\n", pane_path.toLocal8Bit().constData());
+
+        sstvae::gui::ErrorBanner banner;
+        banner.show_error(QStringLiteral(
+            "PTT OFF FAILED: read timeout -- the rig may still be "
+            "transmitting. Unkey it manually."));
+        banner.resize(width > 0 ? width : 1000, banner.sizeHint().height());
+        banner.show();
+        app.processEvents();
+        const QString banner_path = QStringLiteral("%1/banner.png").arg(out);
+        banner.grab().save(banner_path);
+        std::printf("%s\n", banner_path.toLocal8Bit().constData());
     }
 
     for (int i = 0; i < tabs->count(); ++i) {

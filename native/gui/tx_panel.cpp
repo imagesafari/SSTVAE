@@ -26,6 +26,7 @@
 
 #include "app_state.hpp"
 #include "audio/qt/qtaudio.hpp"
+#include "banner.hpp"
 #include "checkpoint/checkpoint.hpp"
 #include "codec/codec.hpp"
 #include "codec/grad_session.hpp"
@@ -189,6 +190,7 @@ void TransmitPanel::schedule_optimization() {
     }
     // The encode runs on the optimizer's worker, after the debounce --
     // so a drag that produces twenty of these pays for none of them.
+    optimizer_result_logged_ = false;  // a fresh run gets a fresh log line
     optimizer_->picture_changed(
         array, [model, array] { return model->encode(array); }, *mode);
 }
@@ -215,16 +217,45 @@ void TransmitPanel::on_optimizer_progress() {
         // Whatever ended it -- plateau, either budget, or Send cutting
         // it short -- the gain it did reach stays on screen.
         status_->setText(tr("Picture refined: %1 est.").arg(gain));
+        if (!optimizer_result_logged_) {
+            // The status label cannot say *why* it stopped, so plateau
+            // and out-of-time looked identical (review F15) -- and the
+            // figure itself was erased the moment transmit started
+            // (F16). The log keeps both.
+            optimizer_result_logged_ = true;
+            app_->log_event(
+                "opt", log::Severity::Info,
+                tr("refined %1 est. (%2, %3 steps, %4 s)")
+                    .arg(gain)
+                    .arg(QString::fromStdString(optimize::to_string(st.stop)))
+                    .arg(st.progress.step)
+                    .arg(st.progress.elapsed_s, 0, 'f', 1));
+        }
     } else if (st.finished) {
         // Finished without a single measured step: the artifact was
         // missing or the encode failed, and the encoder's own latents
         // are what will be sent.
         status_->setText(tr("Sending unrefined"));
+        if (!optimizer_result_logged_) {
+            optimizer_result_logged_ = true;
+            app_->log_event("opt", log::Severity::Warning,
+                            tr("refinement produced no result; sending the "
+                               "encoder's own latents"));
+        }
     }
 }
 
 void TransmitPanel::build_ui() {
     auto* layout = new QVBoxLayout(this);
+
+    // The error tier. Everything the transmit path says shares one
+    // status label at the end of the send bar, so before this existed
+    // "PTT OFF FAILED ... unkey it manually" was replaced by "Sent"
+    // within a second. Errors now also land here and stay until
+    // dismissed or the next send starts cleanly.
+    banner_ = new ErrorBanner(this);
+    layout->addWidget(banner_);
+
     auto* splitter = new QSplitter(Qt::Horizontal, this);
 
     editor_ = new OverlayEditor(splitter);
@@ -477,6 +508,9 @@ void TransmitPanel::load_image(const QString& path) {
         // actually go out.
         editor_->set_base_image(images::fit(images::load(path.toStdString())));
     } catch (const std::exception& e) {
+        app_->log_event("tx", log::Severity::Error,
+                        tr("could not open image %1: %2")
+                            .arg(path, QString::fromUtf8(e.what())));
         QMessageBox::critical(this, tr("Could not open image"),
                               QString::fromUtf8(e.what()));
         return;
@@ -546,6 +580,9 @@ void TransmitPanel::send() {
     }
     if (thread_.joinable()) thread_.join();
 
+    // A fresh attempt clears the previous one's error; the log keeps it.
+    banner_->clear();
+
     // Optimization, if it is on, must be entirely finished before the
     // radio is keyed -- so Send shortens its deadline and then waits,
     // on a timer rather than by blocking. `Speculative::ready()` is
@@ -611,6 +648,7 @@ void TransmitPanel::begin_transmit(const images::Picture& picture,
     // The level is captured in tx_config above, so moving the slider now
     // would change the reading without changing the transmission.
     level_slider_->setEnabled(false);
+    last_logged_phase_ = -1;
     running_.store(true);
     emit transmitStarted();
 
@@ -634,6 +672,32 @@ void TransmitPanel::cancel() {
 
 void TransmitPanel::on_state(int phase, double progress, const QString& message) {
     const auto tx_phase = static_cast<tx::TxPhase>(phase);
+    // This slot fires on every playback progress tick; the log gets a
+    // line only when the phase changes. Keying and unkeying are the
+    // lines the on-air PTT shakedown will want timestamps for.
+    if (phase != last_logged_phase_) {
+        last_logged_phase_ = phase;
+        switch (tx_phase) {
+            case tx::TxPhase::Keying:
+            case tx::TxPhase::Sending:
+            case tx::TxPhase::Unkeying:
+            case tx::TxPhase::Done:
+            case tx::TxPhase::Cancelled:
+                app_->log_event("tx", log::Severity::Info,
+                                message.isEmpty()
+                                    ? QString::fromLatin1(tx::phase_name(tx_phase))
+                                    : message);
+                break;
+            case tx::TxPhase::Failed:
+                // The text arrives through on_error too; the phase line
+                // marks *when* the sequence gave up.
+                app_->log_event("tx", log::Severity::Error,
+                                tr("transmit failed"));
+                break;
+            default:
+                break;  // Idle/Encoding/Modulating: routine, not events
+        }
+    }
     status_->setText(message.isEmpty()
                          ? QString::fromLatin1(tx::phase_name(tx_phase))
                          : message);
@@ -649,7 +713,14 @@ void TransmitPanel::on_state(int phase, double progress, const QString& message)
     }
 }
 
-void TransmitPanel::on_error(const QString& message) { status_->setText(message); }
+void TransmitPanel::on_error(const QString& message) {
+    // Sticky (the banner) plus durable (the log): "PTT OFF FAILED --
+    // unkey it manually" must survive the "Sent" that follows it on the
+    // status label (review F3, the reason the error tier exists).
+    banner_->show_error(message);
+    app_->log_event("tx", log::Severity::Error, message);
+    status_->setText(message);
+}
 
 void TransmitPanel::on_finished(bool ok) {
     if (thread_.joinable()) thread_.join();
@@ -668,7 +739,17 @@ void TransmitPanel::on_finished(bool ok) {
     level_slider_->setEnabled(true);
     progress_->setRange(0, 100);
     progress_->setValue(ok ? 100 : 0);
-    if (ok) status_->setText(tr("Sent"));
+    if (ok) {
+        status_->setText(tr("Sent"));
+    } else if (static_cast<tx::TxPhase>(last_logged_phase_) ==
+               tx::TxPhase::Failed) {
+        // A failed send previously wrote no terminal status at all --
+        // whatever text happened to be there stood (review F3). A
+        // cancelled send also lands here with ok=false, and its
+        // "cancelled" text is already correct, so only a genuine
+        // failure is relabelled.
+        status_->setText(tr("Failed"));
+    }
     emit transmitFinished();
 }
 

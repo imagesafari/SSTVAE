@@ -45,6 +45,7 @@ class InputStream;
 namespace sstvae::gui {
 
 class AppState;
+class ErrorBanner;
 class Waterfall;
 
 class ReceivePanel : public QWidget {
@@ -104,6 +105,7 @@ private:
     AppState* app_ = nullptr;
 
     // --- widgets
+    ErrorBanner* banner_ = nullptr;
     QLabel* preview_ = nullptr;
     QLabel* status_ = nullptr;
     QProgressBar* progress_ = nullptr;
@@ -142,6 +144,10 @@ private:
 
     std::optional<std::string> last_saved_path_;
     bool suspended_for_tx_ = false;
+    // Edge detection for the log: the engine has no "sync acquired"
+    // event, only a status that polls as "receiving", so the transition
+    // is detected here and logged once per acquisition.
+    bool was_receiving_ = false;
 };
 
 }  // namespace sstvae::gui

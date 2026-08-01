@@ -2,6 +2,7 @@
 
 #include <QColor>
 #include <QFontMetrics>
+#include <QMouseEvent>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QPen>
@@ -147,6 +148,7 @@ void Waterfall::tick() {
     // already been clipped somewhere upstream in the capture chain, so
     // this reports the soundcard's problem rather than ours.
     clipping_ = peak_ >= 0.99;
+    if (clipping_) clip_latched_ = true;
 
     ensure_image();
     const std::vector<double> reduced = dsp::reduce_to_width(
@@ -255,6 +257,34 @@ void Waterfall::draw_level_meter(QPainter& painter) {
         color = QColor(255, 190, 60);
     }
     painter.fillRect(x0, h - 2 - filled, bar_w, filled, color);
+
+    if (clip_latched_) {
+        // Latched, not momentary: stays until the meter is clicked, so
+        // clipping that happened while nobody was looking still gets
+        // reported. Same shadowed-text idiom as the band caption.
+        const QString label = tr("CLIP");
+        const int text_x =
+            x0 - painter.fontMetrics().horizontalAdvance(label) - 4;
+        painter.setPen(QColor(0, 0, 0, 160));
+        painter.drawText(text_x + 1, 15, label);
+        painter.setPen(QColor(255, 60, 60, 230));
+        painter.drawText(text_x, 14, label);
+    }
+}
+
+void Waterfall::clear_clip() {
+    clip_latched_ = false;
+    update();
+}
+
+void Waterfall::mousePressEvent(QMouseEvent* event) {
+    // A click on (or near) the meter clears the latch. The whole right
+    // edge counts -- an 8 px bar is not a precision target.
+    if (clip_latched_ && event->position().x() >= width() - 30) {
+        clear_clip();
+        return;
+    }
+    QWidget::mousePressEvent(event);
 }
 
 }  // namespace sstvae::gui

@@ -31,6 +31,7 @@
 #include <thread>
 
 #include "codec/codec.hpp"
+#include "log/log.hpp"
 #include "rig/controller.hpp"
 #include "settings/settings.hpp"
 
@@ -70,15 +71,37 @@ public:
     void pause_rig_polling();
     void resume_rig_polling();
 
-    // A read-only config directory must not break the session.
+    // A read-only config directory must not break the session -- but it
+    // must not be silent either: a failure is logged (review F11).
     void save_config();
+
+    // --- status log ----------------------------------------------------
+    // Append an entry. Thread-safe; callable from any thread. Every
+    // entry also reaches the file writer and the `logEntry` signal.
+    void log_event(const char* source, log::Severity severity,
+                   const QString& text);
+
+    // For the log pane: backfill via snapshot(), then follow logEntry.
+    const log::StatusLog& status_log() const { return log_; }
+    // Empty while the file log is healthy; a description otherwise.
+    QString log_file_note() const;
 
 signals:
     void modelLoaded();
-    void rigStatus(const QString& text);
+    // `error` distinguishes a CAT failure from a routine status; the
+    // text alone cannot (failure text is the backend's exception).
+    void rigStatus(const QString& text, bool error);
+    // Every log entry, queued to the GUI thread for the pane.
+    void logEntry(qlonglong ms, const QString& source, int severity,
+                  const QString& text);
+    // Model artifact download, live. Emitted from the model thread.
+    void modelProgress(qlonglong received, qlonglong total);
 
 private:
     settings::Config config_;
+
+    log::StatusLog log_;
+    std::unique_ptr<log::FileWriter> file_log_;
 
     mutable std::mutex model_mutex_;
     std::unique_ptr<codec::OnnxCodec> model_;

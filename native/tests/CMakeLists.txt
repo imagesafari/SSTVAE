@@ -26,6 +26,12 @@ target_link_libraries(test_ringbuffer PRIVATE sstvae_core)
 target_include_directories(test_ringbuffer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME ringbuffer COMMAND test_ringbuffer)
 
+add_executable(test_log test_log.cpp)
+target_link_libraries(test_log PRIVATE sstvae_core)
+target_include_directories(test_log PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME log COMMAND test_log)
+set_tests_properties(log PROPERTIES TIMEOUT 120)
+
 # The decode loop's decisions, with a stub decoder in place of the
 # codec -- so the state machine is covered in every build, including
 # --no-codec.
