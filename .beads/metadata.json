@@ -1,0 +1,9 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_server_host": "10.0.0.85",
+  "dolt_server_port": 3307,
+  "dolt_database": "SSTVAE",
+  "project_id": "80dd70b9-9986-41ee-8f4c-b2f6e558cb7e"
+}
