@@ -1,8 +1,13 @@
 // The application window.
 //
-// A straight port of `MainWindow` in `sstvae/gui/app.py`: a tab widget
-// with the receive and transmit panels, a File menu, and a status bar
-// carrying callsign, rig and model state.
+// **The receive and transmit panels sit side by side in a splitter,
+// not in tabs.** The reference (and this port until now) put them in a
+// `QTabWidget`, which meant composing a picture was done blind: no
+// waterfall, no decode progress, no incoming preview. On the band that
+// is the wrong trade -- you prepare the next transmission *while*
+// listening, and the thing you most want to see while composing is
+// whether someone else is sending. The splitter lets either side
+// dominate, and either collapse, so a narrow screen is still workable.
 //
 // The wiring between the panels lives here rather than in either of
 // them, because all of it is about the pair: half duplex (our own
@@ -18,7 +23,7 @@
 class QDockWidget;
 class QLabel;
 class QMenu;
-class QTabWidget;
+class QSplitter;
 class QTimer;
 
 namespace sstvae::gui {
@@ -53,7 +58,7 @@ private:
     void refresh_rig_error_age();
 
     AppState* state_ = nullptr;
-    QTabWidget* tabs_ = nullptr;
+    QSplitter* panes_ = nullptr;
     ReceivePanel* rx_panel_ = nullptr;
     TransmitPanel* tx_panel_ = nullptr;
     QLabel* ptt_label_ = nullptr;

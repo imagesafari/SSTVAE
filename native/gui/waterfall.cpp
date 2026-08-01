@@ -72,8 +72,11 @@ Waterfall::Waterfall(QWidget* parent, int fps) : QWidget(parent) {
     // splitter gives it, and demanding all the bins as pixels would stop
     // the operator shrinking this column in favour of the picture.
     setMinimumWidth(160);
-    setMinimumHeight(140);
-    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+    setMinimumHeight(90);
+    // A strip across the top of the receive pane rather than a column
+    // down its side, so it takes the width it is given and does not
+    // fight the picture below it for height.
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
     auto* timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &Waterfall::tick);
@@ -82,7 +85,12 @@ Waterfall::Waterfall(QWidget* parent, int fps) : QWidget(parent) {
 
 Waterfall::~Waterfall() = default;
 
-QSize Waterfall::sizeHint() const { return QSize(280, 600); }
+// Wide and shallow: history depth follows the height, so a strip holds
+// less of it than the old full-height column did -- about eight
+// seconds at 20 fps, which is the span that matters for "is someone
+// transmitting right now" and for setting soundcard gain. The splitter
+// above it makes that the operator's call rather than this number's.
+QSize Waterfall::sizeHint() const { return QSize(520, 160); }
 
 void Waterfall::set_ring(std::shared_ptr<rx::RingBuffer> ring) {
     ring_ = std::move(ring);

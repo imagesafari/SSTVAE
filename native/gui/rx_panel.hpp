@@ -66,6 +66,8 @@ public slots:
     bool start();
     void stop();
     void save_current();
+    // Reveal the last saved picture in the desktop's file manager.
+    void open_saved_folder();
 
     // Half duplex. Our own audio would otherwise be decoded straight
     // back into a "received" picture.
@@ -108,11 +110,13 @@ private:
     ErrorBanner* banner_ = nullptr;
     QLabel* preview_ = nullptr;
     QLabel* status_ = nullptr;
+    QLabel* last_card_ = nullptr;
     QProgressBar* progress_ = nullptr;
     Waterfall* waterfall_ = nullptr;
     QPushButton* start_button_ = nullptr;
     QPushButton* stop_button_ = nullptr;
     QPushButton* save_button_ = nullptr;
+    QPushButton* folder_button_ = nullptr;
     QCheckBox* autosave_ = nullptr;
 
     // --- reception

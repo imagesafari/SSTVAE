@@ -9,8 +9,8 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QSplitter>
 #include <QStatusBar>
-#include <QTabWidget>
 #include <QTimer>
 #include <QWidget>
 
@@ -32,13 +32,23 @@ constexpr auto APP_NAME = "SSTVAE";
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     state_ = new AppState(this);
     setWindowTitle(QString::fromLatin1(APP_NAME));
-    resize(1100, 800);
+    // Wider than the tabbed window it replaces, because two panes are
+    // side by side now; the height is unchanged so it still fits a
+    // 768-tall laptop panel with room for the log dock.
+    resize(1360, 800);
 
-    tabs_ = new QTabWidget(this);
-    rx_panel_ = new ReceivePanel(state_, tabs_);
-    tabs_->addTab(rx_panel_, tr("Receive"));
-    tx_panel_ = new TransmitPanel(state_, tabs_);
-    tabs_->addTab(tx_panel_, tr("Transmit"));
+    panes_ = new QSplitter(Qt::Horizontal, this);
+    rx_panel_ = new ReceivePanel(state_, panes_);
+    tx_panel_ = new TransmitPanel(state_, panes_);
+    panes_->addWidget(rx_panel_);
+    panes_->addWidget(tx_panel_);
+    // The composer is the wider of the two by default -- it holds an
+    // editable 4:3 canvas, where the monitor holds a preview and a
+    // spectrum strip. Neither is pinned: both are collapsible, so an
+    // operator who is only listening can push the composer shut and get
+    // the whole window back.
+    panes_->setStretchFactor(0, 2);
+    panes_->setStretchFactor(1, 3);
 
     // Half duplex: our own transmission must not be decoded back into a
     // received picture. Frequency polling pauses too -- the answer is
@@ -55,7 +65,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // The most recent picture becomes available as a transmit inset.
     connect(rx_panel_, &ReceivePanel::imageReceived, tx_panel_,
             &TransmitPanel::set_last_rx_image);
-    setCentralWidget(tabs_);
+    setCentralWidget(panes_);
 
     build_menu();
     build_status_bar();
