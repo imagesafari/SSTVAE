@@ -87,6 +87,13 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    // Delete removes the selection; the arrows nudge it. Nudging is
+    // what a mouse cannot do: items are placed in normalized
+    // coordinates, so the smallest useful drag is one widget pixel,
+    // which is a different distance on every window size. A key press
+    // is a fixed fraction of the canvas, so two callsigns can actually
+    // be lined up.
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
     enum class Drag { None, Move, Resize };

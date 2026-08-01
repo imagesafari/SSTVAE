@@ -61,6 +61,19 @@ fs::path unique_path(fs::path path) {
     return path;
 }
 
+// SNR for display, with a placeholder when there is none.
+//
+// `rx::fmt_snr` returns an empty string for NaN, which is right for it
+// -- it mirrors Python's and feeds the CLI. But on screen an absent
+// field is indistinguishable from a field that was never going to be
+// there: the operator cannot tell "no SNR estimate yet" from "this
+// build does not show SNR". The engine formats; the panel decides how
+// to show absence.
+QString snr_text(double snr_db) {
+    const QString formatted = QString::fromStdString(rx::fmt_snr(snr_db));
+    return formatted.isEmpty() ? QStringLiteral("  SNR --") : formatted;
+}
+
 }  // namespace
 
 ReceivePanel::ReceivePanel(AppState* state, QWidget* parent)
@@ -457,12 +470,12 @@ void ReceivePanel::refresh_status() {
             text = tr("Receiving (blind sync): %1% of latents")
                        .arg(100.0 * progress.progress_frac, 0, 'f', 0);
         }
-        text += QString::fromStdString(rx::fmt_snr(progress.snr_db));
+        text += snr_text(progress.snr_db);
         if (!progress.callsign.empty()) {
             text += tr("  de %1").arg(QString::fromStdString(progress.callsign));
         }
     } else {
-        text = tr("Complete%1").arg(QString::fromStdString(rx::fmt_snr(progress.snr_db)));
+        text = tr("Complete%1").arg(snr_text(progress.snr_db));
         if (last_saved_path_) {
             text += tr(" -- saved %1")
                         .arg(QString::fromStdString(

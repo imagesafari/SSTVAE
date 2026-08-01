@@ -16,10 +16,12 @@
 
 #include "app_state.hpp"
 #include "log_pane.hpp"
+#include "rig/hamlib.hpp"
 #include "rx_panel.hpp"
-#include "tx_panel.hpp"
+#include "settings/settings.hpp"
 #include "settings_dialog.hpp"
 #include "tx/engine.hpp"
+#include "tx_panel.hpp"
 
 namespace sstvae::gui {
 
@@ -138,6 +140,34 @@ void MainWindow::build_menu() {
     // The action is added in build_log_dock(), which runs after this;
     // the menu pointer is kept on the window via findChild-free means.
     view_menu_ = menuBar()->addMenu(tr("&View"));
+
+    QMenu* help = menuBar()->addMenu(tr("&Help"));
+    QAction* about = help->addAction(tr("&About SSTVAE"));
+    about->setMenuRole(QAction::NoRole);  // as above: keep it in this menu
+    connect(about, &QAction::triggered, this, &MainWindow::show_about);
+}
+
+void MainWindow::show_about() {
+    // The version of the *library that talks to the radio* matters as
+    // much as ours: "which Hamlib" is the first question any rig
+    // problem raises, and an operator should not have to find a
+    // terminal to answer it. Same for the log's location, which is
+    // what a bug report needs attached.
+    QString text = tr("<b>SSTVAE</b><br>"
+                      "Image transmission over HF radio.<br><br>"
+                      "Hamlib %1<br>Qt %2")
+                       .arg(QString::fromStdString(rig::hamlib_version()),
+                            QString::fromLatin1(qVersion()));
+    const QString log_note = state_->log_file_note();
+    if (log_note.isEmpty()) {
+        text += tr("<br><br>Status log: %1")
+                    .arg(QString::fromStdString(
+                        (settings::config_path().parent_path() / "sstvae.log")
+                            .string()));
+    } else {
+        text += QStringLiteral("<br><br>") + log_note;
+    }
+    QMessageBox::about(this, tr("About SSTVAE"), text);
 }
 
 void MainWindow::build_status_bar() {

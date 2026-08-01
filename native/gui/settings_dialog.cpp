@@ -715,6 +715,22 @@ QWidget* SettingsDialog::transmit_tab() {
                          "Send arrives before it has settled, it finishes "
                          "quickly and sends what it has."),
                       page));
+
+    // The transmit level itself stays on the send bar, where it is
+    // adjusted -- but its *guidance* was a tooltip, which means it only
+    // ever reached an operator who already suspected they had it wrong.
+    // Setting drive is the one adjustment that ruins a transmission
+    // silently, so the explanation belongs somewhere it can be read
+    // before the first send rather than after a bad report.
+    form->addRow(note(tr("Transmit level is on the Transmit panel, beside the "
+                         "mode.\n\n"
+                         "Set it so the radio shows no ALC action at all. ALC "
+                         "is a compressor: it flattens the peaks this waveform "
+                         "carries information in, and the far end sees that as "
+                         "a lower SNR and a mangled picture -- while your own "
+                         "meters look healthy. Start low and raise it until "
+                         "power output stops rising, then back off."),
+                      page));
     return page;
 }
 

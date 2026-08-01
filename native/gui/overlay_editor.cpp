@@ -1,6 +1,7 @@
 #include "overlay_editor.hpp"
 
 #include <QImage>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPen>
@@ -8,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <utility>
+#include <variant>
 
 #include "images/images.hpp"
 #include "overlay/render.hpp"
@@ -299,6 +301,52 @@ void OverlayEditor::mouseMoveEvent(QMouseEvent* event) {
 void OverlayEditor::mouseReleaseEvent(QMouseEvent* event) {
     Q_UNUSED(event);
     drag_ = Drag::None;
+}
+
+void OverlayEditor::keyPressEvent(QKeyEvent* event) {
+    overlay::Item* item = selected_item();
+    if (item == nullptr) {
+        QWidget::keyPressEvent(event);
+        return;
+    }
+
+    if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) {
+        remove_selected();
+        event->accept();
+        return;
+    }
+
+    // A fraction of the canvas, not a pixel: positions are normalized,
+    // so a fixed step means the same nudge whatever the window size.
+    // Shift is the coarse step, for getting somewhere; the fine one is
+    // roughly a canvas pixel at 640 wide.
+    constexpr double FINE = 1.0 / 640.0;
+    constexpr double COARSE = 1.0 / 64.0;
+    const double step =
+        (event->modifiers() & Qt::ShiftModifier) ? COARSE : FINE;
+
+    double dx = 0.0;
+    double dy = 0.0;
+    switch (event->key()) {
+        case Qt::Key_Left: dx = -step; break;
+        case Qt::Key_Right: dx = step; break;
+        case Qt::Key_Up: dy = -step; break;
+        case Qt::Key_Down: dy = step; break;
+        default:
+            QWidget::keyPressEvent(event);
+            return;
+    }
+
+    // The same clamp a drag uses, so an item cannot be nudged somewhere
+    // a drag could not have put it.
+    std::visit(
+        [dx, dy](auto& i) {
+            i.x = std::clamp(i.x + dx, -0.5, 1.5);
+            i.y = std::clamp(i.y + dy, -0.5, 1.5);
+        },
+        *item);
+    refresh_item();
+    event->accept();
 }
 
 }  // namespace sstvae::gui

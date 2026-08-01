@@ -22,8 +22,11 @@
 #include "overlay/model.hpp"
 #include "tx/engine.hpp"
 
+class QColor;
 class QComboBox;
 class QDoubleSpinBox;
+class QDragEnterEvent;
+class QDropEvent;
 class QGroupBox;
 class QLabel;
 class QPlainTextEdit;
@@ -94,6 +97,11 @@ signals:
     void errorOccurred(const QString& message);
     void sendFinished(bool ok);
 
+protected:
+    // A dropped picture file loads exactly as a chosen one does.
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
+
 private slots:
     void on_optimizer_progress();
     void on_state(int phase, double progress, const QString& message);
@@ -105,6 +113,8 @@ private slots:
 
 private:
     void build_ui();
+    // Paint the current text colour onto the Colour button.
+    void set_color_swatch(const QColor& color);
     // Push `framing_` through `images::fit` into the editor, and
     // relabel the picture honestly.
     void apply_framing();

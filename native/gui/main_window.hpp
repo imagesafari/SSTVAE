@@ -65,6 +65,7 @@ private:
     void on_rig_status(const QString& text, bool error);
     void on_model_progress(qlonglong received, qlonglong total);
     void on_tx_state(int phase);
+    void show_about();
     void refresh_rig_error_age();
 
     AppState* state_ = nullptr;
