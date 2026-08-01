@@ -114,10 +114,26 @@ void test_file_rotation(const fs::path& dir) {
     check::is_true(writer.error().empty(), "no error after rotating");
 }
 
+void test_missing_parent_is_created(const fs::path& dir) {
+    // A fresh install has no config directory yet; the writer creates
+    // it rather than silently producing no file for the first session.
+    FileWriter writer(dir / "fresh-subdir" / "sstvae.log");
+    check::is_true(writer.error().empty(),
+                   "a missing parent directory is created");
+    Entry e;
+    e.source = "app";
+    e.text = "first line";
+    writer.write(e);
+    check::is_true(fs::exists(dir / "fresh-subdir" / "sstvae.log"),
+                   "and the file lands in it");
+}
+
 void test_file_failure_is_loud(const fs::path& dir) {
-    // A path whose parent does not exist: the open fails, error() says
-    // so, and write() is a no-op rather than a crash.
-    FileWriter writer(dir / "missing-subdir" / "sstvae.log");
+    // A parent that cannot be a directory, because it is a file: the
+    // open fails, error() says so, and write() is a no-op rather than
+    // a crash.
+    std::ofstream(dir / "blocker").put('\n');
+    FileWriter writer(dir / "blocker" / "sstvae.log");
     check::is_true(!writer.error().empty(), "open failure reported");
     Entry e;
     e.source = "app";
@@ -143,6 +159,8 @@ int main() {
     const fs::path dir = make_temp_dir();
     check::current_step.store("rotation");
     test_file_rotation(dir);
+    check::current_step.store("missing_parent");
+    test_missing_parent_is_created(dir);
     check::current_step.store("failure_is_loud");
     test_file_failure_is_loud(dir);
     std::error_code ec;

@@ -36,7 +36,7 @@ public:
     QSize sizeHint() const override;
 
     // Shown next to the filter so a read-only config directory is not
-    // silent (review F11): pass FileWriter::error() when it is set.
+    // silent: pass FileWriter::error() when it is set.
     void set_file_note(const QString& note);
 
 public slots:

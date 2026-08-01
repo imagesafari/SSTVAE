@@ -122,6 +122,16 @@ int main(int argc, char** argv) {
         sstvae::gui::AppState state;
         sstvae::gui::TransmitPanel panel(&state);
         panel.resize(width > 0 ? width : 1000, height > 0 ? height : 700);
+        // The banner *inside the panel's layout*, with the longest
+        // message the app can produce -- a wrapped QLabel that clips
+        // in a layout looks fine shot standalone, so the layout is
+        // what has to be under the camera.
+        QMetaObject::invokeMethod(
+            &panel, "on_error", Qt::DirectConnection,
+            Q_ARG(QString,
+                  QStringLiteral("PTT OFF FAILED: read timeout -- the rig "
+                                 "may still be transmitting. Unkey it "
+                                 "manually.")));
         panel.show();
         app.processEvents();
         const QString path = QStringLiteral("%1/transmit.png").arg(out);

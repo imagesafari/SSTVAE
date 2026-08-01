@@ -250,6 +250,11 @@ bool ReceivePanel::start() {
 }
 
 void ReceivePanel::stop() {
+    // Idempotence matters here: closeEvent stops the panel and the
+    // destructor stops it again, and only the transition from "was
+    // actually listening" deserves a log line.
+    const bool was_listening = thread_.joinable();
+
     stop_flag_.set();
     // The stream first: it is what feeds the loop, and stopping it means
     // the loop's next poll sees no new audio rather than racing us.
@@ -264,9 +269,11 @@ void ReceivePanel::stop() {
         start_button_->setEnabled(true);
         stop_button_->setEnabled(false);
         status_->setText(tr("Stopped"));
-        app_->log_event("rx", log::Severity::Info, tr("stopped"));
     }
-    emit listeningChanged(false);
+    if (was_listening) {
+        app_->log_event("rx", log::Severity::Info, tr("stopped"));
+        emit listeningChanged(false);
+    }
 }
 
 void ReceivePanel::suspend_for_transmit() {
@@ -434,7 +441,7 @@ void ReceivePanel::on_reception(const QString& saved_path) {
 
     // The one durable record of a completed reception: mode, callsign,
     // SNR, frame count and the *full* saved path -- which was previously
-    // shown only in a 5-second status bar flash (review F9).
+    // shown only in a 5-second status bar flash before this line existed.
     QString line = tr("reception complete");
     if (reception->mode_name) {
         line += tr(": mode %1").arg(QString::fromStdString(*reception->mode_name));
@@ -457,12 +464,12 @@ void ReceivePanel::on_reception(const QString& saved_path) {
 }
 
 void ReceivePanel::on_error(const QString& message) {
-    // Sticky (the banner) plus durable (the log). The status label gets
-    // it too for continuity, though the next refresh overwrites it --
-    // that label is the progress tier, and errors no longer depend on it.
+    // Sticky (the banner) plus durable (the log). Deliberately not the
+    // status label: that is the progress tier, the next 500 ms refresh
+    // would overwrite it anyway, and a single-line label given a long
+    // error inflates the panel's minimum width.
     banner_->show_error(message);
     app_->log_event("rx", log::Severity::Error, message);
-    status_->setText(message);
 }
 
 void ReceivePanel::on_autosave_toggled(bool on) {

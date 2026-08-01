@@ -85,7 +85,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     update_station_label();
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+    // Destruction order is load-bearing. `state_` is this window's
+    // first child and the panels live inside the central widget, its
+    // second -- so QObject's forward-order child deletion would destroy
+    // AppState *before* the panels, whose teardown still uses it
+    // (~ReceivePanel calls stop(); ~TransmitPanel joins the transmit
+    // and optimizer workers, which may be mid-fetch through the
+    // AppState-captured progress hook). Deleting the central widget by
+    // hand first means every panel -- and every worker thread they own
+    // -- is gone while AppState is still alive.
+    delete takeCentralWidget();
+}
 
 void MainWindow::build_menu() {
     // The explicit NoRole calls are load-bearing on macOS. Qt's Cocoa
@@ -125,7 +136,7 @@ void MainWindow::build_status_bar() {
     // The PTT lamp: hidden except while the rig is keyed. Bold red
     // text on the standard background -- a state indicator, not chrome
     // -- because "the radio is transmitting" is the one state in the
-    // app that must be visible at a glance (review F8).
+    // app that must be visible at a glance.
     ptt_label_ = new QLabel(tr("TX"), this);
     QFont ptt_font = ptt_label_->font();
     ptt_font.setBold(true);
@@ -171,6 +182,17 @@ void MainWindow::build_log_dock() {
                     log_dock_->show();
                 }
             });
+
+    // Queued is mandatory, not a preference: the signal is emitted
+    // under the StatusLog lock, and this slot appends to that same log.
+    connect(
+        state_, &AppState::fileLogFailed, this,
+        [this](const QString& what) {
+            log_pane_->set_file_note(tr("(log file unavailable: %1)").arg(what));
+            state_->log_event("app", log::Severity::Error,
+                              tr("file log failed: %1").arg(what));
+        },
+        Qt::QueuedConnection);
 }
 
 void MainWindow::update_station_label() {
@@ -222,6 +244,19 @@ void MainWindow::refresh_rig_error_age() {
 }
 
 void MainWindow::on_model_progress(qlonglong received, qlonglong total) {
+    // The hook is global, so this fires for *every* artifact -- the
+    // decoder during the initial load, but also the encoder fetched
+    // lazily on the first Send and the gradient graph on the first
+    // refinement. The fetcher always ends with a final
+    // (size, size) call, which is the reset point: without it the
+    // label would read "downloading" for the rest of the session
+    // after any of those later fetches.
+    if (total > 0 && received >= total) {
+        model_label_->setText(state_->model() != nullptr
+                                  ? tr("Model ready")
+                                  : tr("Loading model..."));
+        return;
+    }
     if (total > 0) {
         model_label_->setText(tr("Model: downloading %1 / %2 MB")
                                   .arg(received / 1e6, 0, 'f', 1)

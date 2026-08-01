@@ -219,9 +219,9 @@ void TransmitPanel::on_optimizer_progress() {
         status_->setText(tr("Picture refined: %1 est.").arg(gain));
         if (!optimizer_result_logged_) {
             // The status label cannot say *why* it stopped, so plateau
-            // and out-of-time looked identical (review F15) -- and the
-            // figure itself was erased the moment transmit started
-            // (F16). The log keeps both.
+            // and out-of-time looked identical -- and the figure
+            // itself was erased the moment transmit started. The log
+            // keeps both.
             optimizer_result_logged_ = true;
             app_->log_event(
                 "opt", log::Severity::Info,
@@ -698,7 +698,11 @@ void TransmitPanel::on_state(int phase, double progress, const QString& message)
                 break;  // Idle/Encoding/Modulating: routine, not events
         }
     }
-    status_->setText(message.isEmpty()
+    // Failed carries the exception text as its message; the banner and
+    // the log have it in full, and a single-line label given a long
+    // error would force the send bar's minimum width out. The label is
+    // the progress tier: short phase words only.
+    status_->setText(message.isEmpty() || tx_phase == tx::TxPhase::Failed
                          ? QString::fromLatin1(tx::phase_name(tx_phase))
                          : message);
     if (tx_phase == tx::TxPhase::Sending) {
@@ -715,11 +719,13 @@ void TransmitPanel::on_state(int phase, double progress, const QString& message)
 
 void TransmitPanel::on_error(const QString& message) {
     // Sticky (the banner) plus durable (the log): "PTT OFF FAILED --
-    // unkey it manually" must survive the "Sent" that follows it on the
-    // status label (review F3, the reason the error tier exists).
+    // unkey it manually" must survive the "Sent" that follows it on
+    // the status label. The label itself gets nothing: it cannot wrap,
+    // so a long error there inflates the send bar's minimum width --
+    // rendered proof: a 700 px gui-shot request came back 1204 px wide
+    // with the PTT message in the label.
     banner_->show_error(message);
     app_->log_event("tx", log::Severity::Error, message);
-    status_->setText(message);
 }
 
 void TransmitPanel::on_finished(bool ok) {
@@ -744,10 +750,9 @@ void TransmitPanel::on_finished(bool ok) {
     } else if (static_cast<tx::TxPhase>(last_logged_phase_) ==
                tx::TxPhase::Failed) {
         // A failed send previously wrote no terminal status at all --
-        // whatever text happened to be there stood (review F3). A
-        // cancelled send also lands here with ok=false, and its
-        // "cancelled" text is already correct, so only a genuine
-        // failure is relabelled.
+        // whatever text happened to be there stood. A cancelled send
+        // also lands here with ok=false, and its "cancelled" text is
+        // already correct, so only a genuine failure is relabelled.
         status_->setText(tr("Failed"));
     }
     emit transmitFinished();

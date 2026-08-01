@@ -212,7 +212,14 @@ void Waterfall::draw_band_markers(QPainter& painter) {
                               .arg(BAND_LO_HZ, 0, 'f', 0)
                               .arg(BAND_HI_HZ, 0, 'f', 0);
     const int label_x = static_cast<int>(BAND_LO_HZ * scale) + 4;
-    if (label_x + painter.fontMetrics().horizontalAdvance(label) < w - 12) {
+    // The latched CLIP marker shares this baseline at the right edge;
+    // when it is up, the caption yields early rather than overprinting
+    // it -- at 195-240 px both fit the old guard and neither is legible.
+    const int reserved =
+        clip_latched_
+            ? painter.fontMetrics().horizontalAdvance(tr("CLIP")) + 20
+            : 12;
+    if (label_x + painter.fontMetrics().horizontalAdvance(label) < w - reserved) {
         painter.setPen(QColor(0, 0, 0, 160));
         painter.drawText(label_x + 1, 15, label);  // shadow, for contrast
         painter.setPen(QColor(255, 255, 255, 220));

@@ -23,6 +23,7 @@
 #include <QObject>
 #include <QString>
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -72,7 +73,7 @@ public:
     void resume_rig_polling();
 
     // A read-only config directory must not break the session -- but it
-    // must not be silent either: a failure is logged (review F11).
+    // must not be silent either: a failure is logged.
     void save_config();
 
     // --- status log ----------------------------------------------------
@@ -94,6 +95,11 @@ signals:
     // Every log entry, queued to the GUI thread for the pane.
     void logEntry(qlonglong ms, const QString& source, int severity,
                   const QString& text);
+    // The file log's first failure, whenever it happens. Emitted from
+    // inside a StatusLog sink -- i.e. under the log's lock -- so the
+    // consumer MUST connect with Qt::QueuedConnection; a direct slot
+    // that calls log_event would deadlock on the non-recursive mutex.
+    void fileLogFailed(const QString& description);
     // Model artifact download, live. Emitted from the model thread.
     void modelProgress(qlonglong received, qlonglong total);
 
@@ -102,6 +108,9 @@ private:
 
     log::StatusLog log_;
     std::unique_ptr<log::FileWriter> file_log_;
+    // First-failure guard for fileLogFailed; the failure itself is
+    // permanent (FileWriter stops writing), so one report is the truth.
+    std::atomic<bool> file_log_reported_{false};
 
     mutable std::mutex model_mutex_;
     std::unique_ptr<codec::OnnxCodec> model_;

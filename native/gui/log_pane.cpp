@@ -81,6 +81,13 @@ bool LogPane::passes_filter(const std::string& source) const {
 }
 
 void LogPane::append_line(const log::Entry& entry) {
+    // Follow the tail only when the operator is already at it, and
+    // never through their cursor: setTextCursor would clear a
+    // selection mid-drag, and unconditional following yanks the view
+    // away from the older line they scrolled up to read.
+    QScrollBar* vbar = text_->verticalScrollBar();
+    const bool at_bottom = vbar->value() >= vbar->maximum();
+
     QTextCursor cursor(text_->document());
     cursor.movePosition(QTextCursor::End);
     QTextCharFormat format;
@@ -91,13 +98,14 @@ void LogPane::append_line(const log::Entry& entry) {
     if (cursor.position() != 0) cursor.insertBlock();
     cursor.setCharFormat(format);
     cursor.insertText(QString::fromStdString(log::format_entry(entry)));
-    text_->setTextCursor(cursor);
-    text_->ensureCursorVisible();
-    // ensureCursorVisible on a long line scrolls the view *right*,
-    // taking the timestamp column off the left edge for every line --
-    // seen in the first gui-shot render. Follow vertically, never
-    // horizontally.
-    text_->horizontalScrollBar()->setValue(0);
+
+    if (at_bottom) {
+        vbar->setValue(vbar->maximum());
+        // A long line would otherwise drag the view right and take the
+        // timestamp column off the left edge -- seen in the first
+        // gui-shot render. Follow vertically, never horizontally.
+        text_->horizontalScrollBar()->setValue(0);
+    }
 }
 
 void LogPane::append(qlonglong ms, const QString& source, int severity,

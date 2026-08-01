@@ -67,7 +67,7 @@ private:
     // The rig label's error-age display: a CAT failure keeps its text,
     // and this pair appends "(N s ago)" so a stale error cannot pass
     // for a fresh one (the controller deduplicates identical repeats,
-    // so the text alone never says how old it is -- review F6).
+    // so the text alone never says how old it is).
     QString rig_error_text_;
     qint64 rig_error_since_ms_ = 0;
     QTimer* rig_error_timer_ = nullptr;

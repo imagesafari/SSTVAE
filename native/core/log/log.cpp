@@ -69,6 +69,11 @@ void StatusLog::add_sink(std::function<void(const Entry&)> sink) {
 FileWriter::FileWriter(fs::path path, std::uint64_t max_bytes, int rotations)
     : path_(std::move(path)), max_bytes_(max_bytes), rotations_(rotations) {
     std::error_code ec;
+    // On a fresh install nothing has created the config directory yet
+    // -- settings::save() does, but the first session may never call
+    // it, and the first session is exactly the one whose log is worth
+    // having (first-run download failures live there).
+    if (path_.has_parent_path()) fs::create_directories(path_.parent_path(), ec);
     const std::uint64_t existing = fs::file_size(path_, ec);
     written_ = ec ? 0 : existing;
     out_.open(path_, std::ios::app);

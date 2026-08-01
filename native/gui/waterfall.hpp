@@ -61,10 +61,10 @@ public:
     // The clip indicator latches: a peak at or over unity marks the
     // display until the operator clicks the meter. The instantaneous
     // red bar reverts as soon as the peak passes, which for a 20 fps
-    // meter means a clipped over could come and go entirely unseen
-    // (review F12). Latched state is what turns "was it clipping while
-    // I was away?" into a question with an answer -- which is also why
-    // replacing the ring does *not* clear it.
+    // meter means a clipped over could come and go entirely unseen.
+    // Latched state is what turns "was it clipping while I was away?"
+    // into a question with an answer -- which is also why replacing
+    // the ring does *not* clear it.
     bool clip_latched() const { return clip_latched_; }
     void clear_clip();
 

@@ -54,7 +54,18 @@ AppState::AppState(QObject* parent)
     try {
         file_log_ = std::make_unique<log::FileWriter>(
             settings::config_path().parent_path() / "sstvae.log");
-        log_.add_sink([this](const log::Entry& e) { file_log_->write(e); });
+        log_.add_sink([this](const log::Entry& e) {
+            file_log_->write(e);
+            // A write failure is permanent (FileWriter closes the
+            // stream), so it must be reported, once, whenever it
+            // happens -- a full disk hours in must not fail quietly.
+            if (!file_log_reported_.load(std::memory_order_relaxed)) {
+                const std::string err = file_log_->error();
+                if (!err.empty() && !file_log_reported_.exchange(true)) {
+                    emit fileLogFailed(QString::fromStdString(err));
+                }
+            }
+        });
     } catch (const std::exception&) {
         // No config directory at all; the in-memory log still works and
         // log_file_note() reports the absence.
@@ -63,7 +74,7 @@ AppState::AppState(QObject* parent)
     // The load happens here rather than in the member initializer so the
     // validation notes can be kept: a corrupt or out-of-range field is
     // coerced to its default *and reported*, where previously the notes
-    // were discarded wholesale (review F10).
+    // were discarded wholesale.
     const settings::LoadResult loaded = settings::load();
     config_ = loaded.config;
     for (const std::string& message : loaded.messages()) {
@@ -73,8 +84,12 @@ AppState::AppState(QObject* parent)
 
     // The fetcher that downloads the published checkpoint, with live
     // progress. Installed here rather than in main() so the progress
-    // hook has somewhere to land. The capture of `this` outlives use:
-    // only the model thread fetches, and ~AppState joins it.
+    // hook has somewhere to land. Three threads fetch through it: the
+    // model thread (decoder preload), the transmit worker (the lazily
+    // loaded encoder) and the optimizer worker (the gradient graph).
+    // The `this` capture outlives all of them because ~MainWindow
+    // destroys the panels -- which join those workers -- *before* its
+    // AppState child, and ~AppState then joins the model thread.
     checkpoint::install_qt_fetcher([this](std::int64_t received,
                                           std::int64_t total) {
         emit modelProgress(static_cast<qlonglong>(received),
@@ -178,7 +193,7 @@ void AppState::save_config() {
     } catch (const std::exception& e) {
         // A read-only config directory must not break the session --
         // but the operator has to find out *somewhere* that their
-        // settings are not sticking (review F11).
+        // settings are not sticking.
         log_event("app", log::Severity::Error,
                   tr("could not save settings: %1").arg(QString::fromUtf8(e.what())));
     }
