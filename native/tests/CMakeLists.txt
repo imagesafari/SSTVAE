@@ -26,6 +26,12 @@ target_link_libraries(test_ringbuffer PRIVATE sstvae_core)
 target_include_directories(test_ringbuffer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME ringbuffer COMMAND test_ringbuffer)
 
+add_executable(test_framing test_framing.cpp)
+target_link_libraries(test_framing PRIVATE sstvae_core)
+target_include_directories(test_framing PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME framing COMMAND test_framing)
+set_tests_properties(framing PROPERTIES TIMEOUT 180)
+
 add_executable(test_log test_log.cpp)
 target_link_libraries(test_log PRIVATE sstvae_core)
 target_include_directories(test_log PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

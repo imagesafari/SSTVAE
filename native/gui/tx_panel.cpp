@@ -31,6 +31,7 @@
 #include "codec/codec.hpp"
 #include "codec/grad_session.hpp"
 #include "config.hpp"
+#include "crop_dialog.hpp"
 #include "images/images.hpp"
 #include "overlay_editor.hpp"
 #include "settings/settings.hpp"
@@ -282,8 +283,16 @@ QWidget* TransmitPanel::build_side_panel() {
             &TransmitPanel::choose_image);
     image_label_ = new QLabel(tr("No image selected"), source);
     image_label_->setWordWrap(true);
+    frame_button_ = new QPushButton(tr("Adjust framing..."), source);
+    frame_button_->setToolTip(
+        tr("Choose which part of the picture is sent, for anything that is "
+           "not 4:3"));
+    frame_button_->setEnabled(false);
+    connect(frame_button_, &QPushButton::clicked, this,
+            &TransmitPanel::choose_framing);
     source_layout->addWidget(choose_button_);
     source_layout->addWidget(image_label_);
+    source_layout->addWidget(frame_button_);
     column->addWidget(source);
 
     auto* overlay_box = new QGroupBox(tr("Overlay"), panel);
@@ -513,12 +522,9 @@ void TransmitPanel::choose_image() {
 }
 
 void TransmitPanel::load_image(const QString& path) {
+    images::Picture loaded;
     try {
-        // Framed to the transmit size here, not at send time: the
-        // overlay's coordinates are fractions of the canvas, so the
-        // operator has to be composing against the frame that will
-        // actually go out.
-        editor_->set_base_image(images::fit(images::load(path.toStdString())));
+        loaded = images::load(path.toStdString());
     } catch (const std::exception& e) {
         app_->log_event("tx", log::Severity::Error,
                         tr("could not open image %1: %2")
@@ -527,10 +533,71 @@ void TransmitPanel::load_image(const QString& path) {
                               QString::fromUtf8(e.what()));
         return;
     }
-    image_label_->setText(QFileInfo(path).fileName());
+
+    // The *original* is kept, not the framed result: re-framing has to
+    // start from the picture the operator chose, or each adjustment
+    // would crop what the last one had already cropped.
+    source_ = std::move(loaded);
+    source_path_ = path;
+    framing_ = images::Framing{};
+
+    if (source_->width < images::MIN_W || source_->height < images::MIN_H) {
+        // Upscaled without comment until now. It still is -- refusing
+        // would be worse -- but the operator should know why the
+        // picture looks soft.
+        app_->log_event(
+            "tx", log::Severity::Warning,
+            tr("%1 is %2x%3, below the %4x%5 minimum; it will be upscaled")
+                .arg(QFileInfo(path).fileName())
+                .arg(source_->width)
+                .arg(source_->height)
+                .arg(images::MIN_W)
+                .arg(images::MIN_H));
+    }
+
+    // 4:3 needs no decision, so it is not asked for. Compared as a
+    // ratio of integers rather than a float equality, so 640x480 and
+    // 1600x1200 both count as exact.
+    const bool four_by_three =
+        source_->width * images::IMG_H == source_->height * images::IMG_W;
+    if (!four_by_three) {
+        choose_framing();
+    } else {
+        apply_framing();
+    }
+
     app_->config().folders.transmit_dir =
         QFileInfo(path).absolutePath().toStdString();
     app_->save_config();
+}
+
+void TransmitPanel::choose_framing() {
+    if (!source_) return;
+    CropDialog dialog(*source_, framing_, this);
+    if (dialog.exec() == QDialog::Accepted) framing_ = dialog.framing();
+    apply_framing();
+}
+
+void TransmitPanel::apply_framing() {
+    if (!source_) return;
+    // Framed to the transmit size here, not at send time: the overlay's
+    // coordinates are fractions of the canvas, so the operator has to
+    // be composing against the frame that will actually go out.
+    editor_->set_base_image(images::fit(*source_, framing_));
+
+    // An honest caption. The old one said the filename and nothing
+    // else, so a picture that had lost a quarter of its width looked
+    // exactly like one that had not.
+    QString caption = QFileInfo(source_path_).fileName();
+    caption += tr("\n%1x%2").arg(source_->width).arg(source_->height);
+    const bool four_by_three =
+        source_->width * images::IMG_H == source_->height * images::IMG_W;
+    if (!four_by_three || framing_.zoom > 1.0) {
+        caption += tr(", cropped to 4:3");
+    }
+    image_label_->setText(caption);
+    frame_button_->setEnabled(true);
+    schedule_optimization();
 }
 
 void TransmitPanel::set_last_rx_image(const images::Picture& image) {
