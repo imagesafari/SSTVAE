@@ -717,11 +717,12 @@ QWidget* SettingsDialog::transmit_tab() {
                       page));
 
     // The transmit level itself stays on the send bar, where it is
-    // adjusted -- but its *guidance* was a tooltip, which means it only
-    // ever reached an operator who already suspected they had it wrong.
-    // Setting drive is the one adjustment that ruins a transmission
-    // silently, so the explanation belongs somewhere it can be read
-    // before the first send rather than after a bad report.
+    // adjusted, and keeps a short tooltip there. What lives here is the
+    // *procedure*, because a tooltip only ever reaches an operator who
+    // already suspects they have it wrong -- and drive is the one
+    // adjustment that ruins a transmission silently. The two texts name
+    // the same target on purpose; if this one changes, change the
+    // tooltip in `tx_panel.cpp` with it.
     form->addRow(note(tr("Transmit level is on the Transmit panel, beside the "
                          "mode.\n\n"
                          "Set it so the radio shows no ALC action at all. ALC "

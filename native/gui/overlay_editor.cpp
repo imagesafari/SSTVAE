@@ -32,7 +32,10 @@ QImage to_qimage(const images::Picture& picture) {
 OverlayEditor::OverlayEditor(QWidget* parent) : QWidget(parent) {
     setMinimumSize(320, 240);
     setMouseTracking(false);
-    setFocusPolicy(Qt::ClickFocus);
+    // Strong, not ClickFocus: the arrow keys and Delete are useless to
+    // an operator who cannot get focus onto this widget, and ClickFocus
+    // keeps it out of the Tab chain entirely.
+    setFocusPolicy(Qt::StrongFocus);
 }
 
 OverlayEditor::~OverlayEditor() = default;
@@ -62,6 +65,10 @@ void OverlayEditor::add_text(const std::string& text) {
     item.text = text;
     doc_.items.push_back(item);
     select(static_cast<int>(doc_.items.size()) - 1);
+    // The button that ran this has the focus, so the keyboard would
+    // otherwise be dead on exactly the flow the nudge exists for --
+    // add a callsign, then line it up against another.
+    setFocus(Qt::OtherFocusReason);
     emit documentChanged();
 }
 
@@ -70,6 +77,10 @@ void OverlayEditor::add_image_inset(const std::string& path) {
     item.source = path;
     doc_.items.push_back(item);
     select(static_cast<int>(doc_.items.size()) - 1);
+    // The button that ran this has the focus, so the keyboard would
+    // otherwise be dead on exactly the flow the nudge exists for --
+    // add a callsign, then line it up against another.
+    setFocus(Qt::OtherFocusReason);
     emit documentChanged();
 }
 
@@ -77,6 +88,10 @@ void OverlayEditor::add_last_rx_inset() {
     overlay::ImageItem item;  // defaults to SOURCE_LAST_RX
     doc_.items.push_back(item);
     select(static_cast<int>(doc_.items.size()) - 1);
+    // The button that ran this has the focus, so the keyboard would
+    // otherwise be dead on exactly the flow the nudge exists for --
+    // add a callsign, then line it up against another.
+    setFocus(Qt::OtherFocusReason);
     emit documentChanged();
 }
 

@@ -204,6 +204,11 @@ void AppState::log_event(const char* source, log::Severity severity,
     log_.append(source, severity, text.toStdString());
 }
 
+QString AppState::log_file_path() const {
+    if (!file_log_) return QString();
+    return QString::fromStdString(file_log_->path().string());
+}
+
 QString AppState::log_file_note() const {
     if (!file_log_) return tr("(no log file: no config directory)");
     const std::string error = file_log_->error();

@@ -18,7 +18,6 @@
 #include "log_pane.hpp"
 #include "rig/hamlib.hpp"
 #include "rx_panel.hpp"
-#include "settings/settings.hpp"
 #include "settings_dialog.hpp"
 #include "tx/engine.hpp"
 #include "tx_panel.hpp"
@@ -160,10 +159,7 @@ void MainWindow::show_about() {
                             QString::fromLatin1(qVersion()));
     const QString log_note = state_->log_file_note();
     if (log_note.isEmpty()) {
-        text += tr("<br><br>Status log: %1")
-                    .arg(QString::fromStdString(
-                        (settings::config_path().parent_path() / "sstvae.log")
-                            .string()));
+        text += tr("<br><br>Status log: %1").arg(state_->log_file_path());
     } else {
         text += QStringLiteral("<br><br>") + log_note;
     }

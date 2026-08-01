@@ -86,6 +86,11 @@ public:
     const log::StatusLog& status_log() const { return log_; }
     // Empty while the file log is healthy; a description otherwise.
     QString log_file_note() const;
+    // Where the file log is being written, or empty if there is none.
+    // Asked rather than re-derived: a second copy of this path would
+    // keep compiling after the writer's location moved, and it is the
+    // path an operator is told to attach to a bug report.
+    QString log_file_path() const;
 
 signals:
     void modelLoaded();
