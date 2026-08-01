@@ -5,6 +5,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPen>
+#include <QResizeEvent>
 
 #include <algorithm>
 #include <cmath>
@@ -31,6 +32,9 @@ QImage to_qimage(const images::Picture& picture) {
 
 OverlayEditor::OverlayEditor(QWidget* parent) : QWidget(parent) {
     setMinimumSize(320, 240);
+    QSizePolicy policy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    policy.setHeightForWidth(true);
+    setSizePolicy(policy);
     setMouseTracking(false);
     // Strong, not ClickFocus: the arrow keys and Delete are useless to
     // an operator who cannot get focus onto this widget, and ClickFocus
@@ -42,6 +46,10 @@ OverlayEditor::~OverlayEditor() = default;
 
 QSize OverlayEditor::sizeHint() const {
     return QSize(overlay::CANVAS_W, overlay::CANVAS_H);
+}
+
+int OverlayEditor::heightForWidth(int w) const {
+    return w * overlay::CANVAS_H / overlay::CANVAS_W;
 }
 
 void OverlayEditor::set_base_image(const images::Picture& image) {
@@ -316,6 +324,14 @@ void OverlayEditor::mouseMoveEvent(QMouseEvent* event) {
 void OverlayEditor::mouseReleaseEvent(QMouseEvent* event) {
     Q_UNUSED(event);
     drag_ = Drag::None;
+}
+
+void OverlayEditor::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    // From the widget's own new width, where it is authoritative.
+    const int want =
+        std::max(120, width() * overlay::CANVAS_H / overlay::CANVAS_W);
+    if (minimumHeight() != want) setFixedHeight(want);
 }
 
 void OverlayEditor::keyPressEvent(QKeyEvent* event) {

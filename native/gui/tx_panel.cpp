@@ -279,7 +279,15 @@ void TransmitPanel::build_ui() {
             &TransmitPanel::on_selection);
     connect(editor_, &OverlayEditor::documentChanged, this,
             &TransmitPanel::schedule_optimization);
-    splitter->addWidget(editor_);
+    // The editor sits in a container that can absorb the leftover
+    // height: it is pinned to the transmitted frame's 4:3, and a
+    // splitter would otherwise stretch it to fill.
+    auto* canvas_holder = new QWidget(splitter);
+    auto* canvas_layout = new QVBoxLayout(canvas_holder);
+    canvas_layout->setContentsMargins(0, 0, 0, 0);
+    canvas_layout->addWidget(editor_);
+    canvas_layout->addStretch(1);
+    splitter->addWidget(canvas_holder);
     splitter->addWidget(build_side_panel());
     splitter->setStretchFactor(0, 3);
     splitter->setStretchFactor(1, 1);

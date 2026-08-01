@@ -57,6 +57,9 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
+    // Wrap a panel in a titled box, so which half is which is read
+    // rather than inferred from a button caption.
+    QWidget* build_pane(const QString& title, QWidget* content);
     void build_menu();
     void build_status_bar();
     void build_log_dock();

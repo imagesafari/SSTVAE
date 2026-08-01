@@ -4,6 +4,7 @@
 #include <QCloseEvent>
 #include <QDateTime>
 #include <QDockWidget>
+#include <QGroupBox>
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenu>
@@ -12,6 +13,7 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QTimer>
+#include <QVBoxLayout>
 #include <QWidget>
 
 #include "app_state.hpp"
@@ -41,8 +43,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     panes_ = new QSplitter(Qt::Horizontal, this);
     rx_panel_ = new ReceivePanel(state_, panes_);
     tx_panel_ = new TransmitPanel(state_, panes_);
-    panes_->addWidget(rx_panel_);
-    panes_->addWidget(tx_panel_);
+
+    // **Each pane is named.** The tabs this replaced carried the only
+    // labels that said which half was which, and dropping them left two
+    // similar-looking columns of controls whose identity you had to
+    // infer from a button caption ("Start receiving", "Send"). Driving
+    // it settles the question: inferring is not the same as seeing.
+    //
+    // The titles go on here rather than inside the panels because this
+    // is where the pairing lives -- neither panel has any business
+    // knowing it sits beside the other one -- and because a group box
+    // is the plain Qt idiom for "this framed region is X", matching the
+    // Picture/Overlay boxes already inside them.
+    panes_->addWidget(build_pane(tr("Receive"), rx_panel_));
+    panes_->addWidget(build_pane(tr("Transmit"), tx_panel_));
+    // A wide handle so the division between the two reads as a
+    // division, not as a gap between controls.
+    panes_->setHandleWidth(6);
     // The composer is the wider of the two by default -- it holds an
     // editable 4:3 canvas, where the monitor holds a preview and a
     // spectrum strip. Neither is pinned: both are collapsible, so an
@@ -107,6 +124,24 @@ MainWindow::~MainWindow() {
     // hand first means every panel -- and every worker thread they own
     // -- is gone while AppState is still alive.
     delete takeCentralWidget();
+}
+
+QWidget* MainWindow::build_pane(const QString& title, QWidget* content) {
+    auto* box = new QGroupBox(title, panes_);
+    // Bold, because this is the label that answers "which half am I
+    // looking at" and the boxes nested inside it are titled too. The
+    // font is the only change -- no stylesheet, no colour.
+    QFont heading = box->font();
+    heading.setBold(true);
+    box->setFont(heading);
+    auto* layout = new QVBoxLayout(box);
+    layout->setContentsMargins(6, 4, 6, 6);
+    // The content keeps the default weight; only the title is bold.
+    QFont body = content->font();
+    body.setBold(false);
+    content->setFont(body);
+    layout->addWidget(content);
+    return box;
 }
 
 void MainWindow::build_menu() {
