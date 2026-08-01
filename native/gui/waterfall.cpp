@@ -68,9 +68,11 @@ const std::array<Rgb, 256>& colormap() {
 }  // namespace
 
 Waterfall::Waterfall(QWidget* parent, int fps) : QWidget(parent) {
-    // Narrow minimum: the frequency axis is scaled to whatever width the
-    // splitter gives it, and demanding all the bins as pixels would stop
-    // the operator shrinking this column in favour of the picture.
+    // Narrow minimum: the frequency axis is scaled to whatever width it
+    // is given, and demanding all 384 bins as pixels would make this
+    // strip the floor under the whole receive pane -- and, since the
+    // two panes share a splitter whose minimum is the *sum* of theirs,
+    // under the window.
     setMinimumWidth(160);
     setMinimumHeight(90);
     // A strip across the top of the receive pane rather than a column
@@ -198,6 +200,24 @@ void Waterfall::paintEvent(QPaintEvent* event) {
     painter.drawImage(QPointF(0, 0), image_);
     draw_band_markers(painter);
     draw_level_meter(painter);
+    draw_disabled_scrim(painter);
+}
+
+void Waterfall::draw_disabled_scrim(QPainter& painter) {
+    // `setEnabled(false)` alone does nothing to a custom-painted widget:
+    // Qt greys the *standard* controls it draws itself, and a QLabel
+    // dims its pixmap, but a paintEvent that blits an image and strokes
+    // hard-coded colours renders pixel-identically either way. This
+    // widget is disabled exactly once -- while transmitting -- and the
+    // whole point of showing it then is that a paused receiver must not
+    // look like a wedged one, which is the state a frozen spectrum with
+    // no scrim is indistinguishable from.
+    if (isEnabled()) return;
+    painter.fillRect(rect(), QColor(0, 0, 0, 150));
+    painter.setPen(QColor(220, 220, 220, 220));
+    const QString label = tr("paused - transmitting");
+    const QRect box = rect();
+    painter.drawText(box, Qt::AlignCenter, label);
 }
 
 void Waterfall::draw_band_markers(QPainter& painter) {
@@ -213,7 +233,7 @@ void Waterfall::draw_band_markers(QPainter& painter) {
         painter.drawLine(x, 0, x, h);
     }
 
-    // The column is user-resizable, so the caption has to earn its
+    // The strip is user-resizable, so the caption has to earn its
     // place: drop it rather than let it run off the edge or overprint
     // the spectrum.
     const QString label = tr("SSTVAE %1-%2 Hz")

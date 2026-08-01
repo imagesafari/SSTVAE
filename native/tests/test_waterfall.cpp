@@ -211,6 +211,43 @@ void test_clipping_latches_until_cleared() {
                    "waterfall/clip: a click on the meter clears the latch");
 }
 
+void test_disabled_looks_different() {
+    // `setEnabled(false)` is a no-op on a custom-painted widget: Qt
+    // greys the controls it draws itself and dims a QLabel's pixmap,
+    // but a paintEvent that blits an image and strokes hard-coded
+    // colours renders pixel-identically either way. This widget is
+    // disabled exactly once -- during transmit -- and the entire point
+    // of leaving it on screen then is that a paused receiver must not
+    // look like a wedged one. So "disabled renders differently" is the
+    // assertion, not "setEnabled was called".
+    gui::Waterfall widget;
+    widget.resize(W, H);
+    widget.set_ring(ring_with_tone(TONE_HZ));
+    for (int i = 0; i < 4; ++i) {
+        QMetaObject::invokeMethod(&widget, "tick", Qt::DirectConnection);
+    }
+    const QImage enabled = shot(widget);
+
+    widget.setEnabled(false);
+    const QImage disabled = shot(widget);
+
+    check::is_true(enabled != disabled,
+                   "waterfall/disabled: renders differently from enabled");
+    // And specifically darker, which is what a scrim means -- a change
+    // that merely moved pixels around would pass the check above.
+    const auto mean = [](const QImage& image) {
+        double total = 0.0;
+        for (int y = 0; y < image.height(); ++y) {
+            for (int x = 0; x < image.width(); ++x) {
+                total += brightness(image, x, y);
+            }
+        }
+        return total / (image.width() * image.height());
+    };
+    check::is_true(mean(disabled) < mean(enabled),
+                   "waterfall/disabled: and is dimmed rather than merely changed");
+}
+
 void test_clear_blanks_it() {
     gui::Waterfall widget;
     widget.resize(W, H);
@@ -237,6 +274,7 @@ int main(int argc, char** argv) {
     test_history_scrolls_downward();
     test_a_resize_keeps_the_history();
     test_clipping_latches_until_cleared();
+    test_disabled_looks_different();
     test_clear_blanks_it();
 
     return check::report("waterfall widget");

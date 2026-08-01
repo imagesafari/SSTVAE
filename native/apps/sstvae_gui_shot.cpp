@@ -141,7 +141,13 @@ int main(int argc, char** argv) {
         app.processEvents();
         const QString path = QStringLiteral("%1/transmit.png").arg(out);
         panel.grab().save(path);
-        std::printf("%s\n", path.toLocal8Bit().constData());
+        // The minimum is reported because it is a real constraint on
+        // the window: the two panes sit in a splitter, whose minimum is
+        // the *sum* of its children's, so a pane that quietly demands
+        // 700 px sets the floor for the whole application.
+        std::printf("%s (min %dx%d)\n", path.toLocal8Bit().constData(),
+                    panel.minimumSizeHint().width(),
+                    panel.minimumSizeHint().height());
     }
 
     // The receive pane at the width the dual-pane split gives it --
@@ -152,12 +158,20 @@ int main(int argc, char** argv) {
     if (receive) {
         sstvae::gui::AppState state;
         sstvae::gui::ReceivePanel panel(&state);
+        // Populated, not pristine: an empty pane hides exactly what has
+        // to be looked at -- the card at its full length, the banner
+        // inside the layout, and the longest status line the panel can
+        // produce, each of which sets a width floor. The transmit shot
+        // below injects its worst message for the same reason.
+        panel.fill_for_screenshot();
         panel.resize(width > 0 ? width : 540, height > 0 ? height : 700);
         panel.show();
         app.processEvents();
         const QString path = QStringLiteral("%1/receive.png").arg(out);
         panel.grab().save(path);
-        std::printf("%s\n", path.toLocal8Bit().constData());
+        std::printf("%s (min %dx%d)\n", path.toLocal8Bit().constData(),
+                    panel.minimumSizeHint().width(),
+                    panel.minimumSizeHint().height());
     }
 
     // The observability widgets, with representative content: the pane

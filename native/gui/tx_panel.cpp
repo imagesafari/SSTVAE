@@ -424,7 +424,11 @@ QWidget* TransmitPanel::build_send_bar() {
                             0);
     level_slider_->setSingleStep(1);
     level_slider_->setPageStep(2);  // one whole dB
-    level_slider_->setFixedWidth(140);
+    // Wide enough to aim with, but a *minimum* rather than a fixed
+    // width so the send bar can be narrowed; the slider gives up its
+    // extra length before anything starts clipping.
+    level_slider_->setMinimumWidth(80);
+    level_slider_->setMaximumWidth(140);
     level_slider_->setToolTip(
         tr("Output level, dB relative to full scale.\n\n"
            "Set it so the radio's ALC barely moves. The waveform is already "
@@ -457,7 +461,15 @@ QWidget* TransmitPanel::build_send_bar() {
 
     progress_ = new QProgressBar(bar);
     progress_->setRange(0, 100);
+    // The bar stretches, so it needs no width of its own; without this
+    // its default hint is a floor under the whole send bar.
+    progress_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     status_ = new QLabel(tr("Ready"), bar);
+    // Progress-tier text must not set a width floor: the two panes sit
+    // in a splitter whose minimum is the *sum* of its children's, so
+    // every pixel this label demands is a pixel the window cannot be
+    // narrowed by. Errors go to the banner above, which wraps.
+    status_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 
     layout->addWidget(new QLabel(tr("Mode:"), bar));
     layout->addWidget(mode_combo_);

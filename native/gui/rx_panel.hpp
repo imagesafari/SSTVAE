@@ -69,6 +69,14 @@ public slots:
     // Reveal the last saved picture in the desktop's file manager.
     void open_saved_folder();
 
+    // Fill every text surface with the longest content it can hold, for
+    // `sstvae-gui-shot`. A slot for the same reason `Waterfall::tick`
+    // is one: the layout facts worth looking at -- whether the status
+    // line, the card and the five-button controls row fit a narrow pane
+    // -- are invisible on a freshly constructed panel, where all three
+    // are empty. Touches no engine and starts nothing.
+    void fill_for_screenshot();
+
     // Half duplex. Our own audio would otherwise be decoded straight
     // back into a "received" picture.
     void suspend_for_transmit();

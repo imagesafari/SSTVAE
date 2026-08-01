@@ -6,8 +6,18 @@
 // waterfall, no decode progress, no incoming preview. On the band that
 // is the wrong trade -- you prepare the next transmission *while*
 // listening, and the thing you most want to see while composing is
-// whether someone else is sending. The splitter lets either side
-// dominate, and either collapse, so a narrow screen is still workable.
+// whether someone else is sending.
+//
+// **The price is the window's minimum width, and it is not small.** A
+// `QSplitter`'s minimum is the *sum* of its children's, not the max a
+// tab widget got away with, and a collapsed pane still counts because
+// it is not hidden. Measured with `sstvae-gui-shot`, which prints each
+// pane's `minimumSizeHint`: transmit 545, receive 464, so the window
+// floor is ~1015 px against ~738 before. Progress-tier labels are
+// therefore set `QSizePolicy::Ignored` wherever they would otherwise
+// pin a width -- that alone took transmit from 738 to 545 -- and
+// anything genuinely narrow needs the scroll-area treatment the
+// settings dialog already uses (SSTVAE-rv9).
 //
 // The wiring between the panels lives here rather than in either of
 // them, because all of it is about the pair: half duplex (our own

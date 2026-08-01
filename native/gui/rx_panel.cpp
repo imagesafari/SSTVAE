@@ -127,6 +127,13 @@ void ReceivePanel::build_ui() {
     lower_layout->addWidget(preview_box, 1);
 
     status_ = new QLabel(tr("Stopped"), lower);
+    // A progress-tier surface must not set a width floor. Its longest
+    // line ("Receiving mode C: frame 220/220 ... de KD8XYZ") is ~400 px,
+    // and with the two panes in a splitter -- whose minimum is the sum
+    // of its children's -- every such floor is paid by the whole
+    // window. Errors go to the banner, so what clips here is progress
+    // text that is rebuilt twice a second anyway.
+    status_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     lower_layout->addWidget(status_);
 
     progress_ = new QProgressBar(lower);
@@ -316,6 +323,15 @@ void ReceivePanel::suspend_for_transmit() {
     status_->setText(tr("Paused -- transmitting"));
     preview_->setEnabled(false);
     waterfall_->setEnabled(false);
+    // And the button that would undo half duplex. `stop()` re-enables
+    // it on its way through, and this pane is now in front of the
+    // operator for the whole over: clicking Start here would open
+    // capture while the rig is keyed, feed our own transmission to the
+    // decoder, and -- because `start()` returns early when already
+    // listening -- deny `resume_after_transmit` the fresh ring buffer
+    // that is what keeps the tail of our own signal out of a
+    // "reception".
+    start_button_->setEnabled(false);
 }
 
 void ReceivePanel::resume_after_transmit() {
@@ -323,6 +339,7 @@ void ReceivePanel::resume_after_transmit() {
     suspended_for_tx_ = false;
     preview_->setEnabled(true);
     waterfall_->setEnabled(true);
+    start_button_->setEnabled(true);  // start() disables it again
     // start() allocates a fresh ring buffer, so the tail of our own
     // transmission is dropped rather than decoded back as a reception.
     start();
@@ -501,20 +518,20 @@ void ReceivePanel::on_reception(const QString& saved_path) {
     // below this point was previously unrecoverable from the UI.
     QString card = tr("Last: %1").arg(QTime::currentTime().toString(QStringLiteral("HH:mm")));
     if (reception->mode_name) {
-        card += tr(" · mode %1").arg(QString::fromStdString(*reception->mode_name));
+        card += tr(" - mode %1").arg(QString::fromStdString(*reception->mode_name));
     }
     if (!reception->callsign.empty()) {
-        card += tr(" · de %1").arg(QString::fromStdString(reception->callsign));
+        card += tr(" - de %1").arg(QString::fromStdString(reception->callsign));
     }
     const QString card_snr = QString::fromStdString(rx::fmt_snr(reception->snr_db));
-    if (!card_snr.isEmpty()) card += QStringLiteral(" ·") + card_snr;
+    if (!card_snr.isEmpty()) card += QStringLiteral(" -") + card_snr;
     if (reception->n_frames_expected) {
-        card += tr(" · %1/%2 frames")
+        card += tr(" - %1/%2 frames")
                     .arg(reception->frames_received.value_or(0))
                     .arg(*reception->n_frames_expected);
     }
     if (!saved_path.isEmpty()) {
-        card += tr(" · %1").arg(
+        card += tr(" - %1").arg(
             QString::fromStdString(fs::path(saved_path.toStdString()).filename().string()));
     }
     last_card_->setText(card);
@@ -592,7 +609,35 @@ void ReceivePanel::save_current() {
     }
     last_saved_path_ = path.toStdString();
     folder_button_->setEnabled(true);
+    // The card claims to name the file the last picture went to, so a
+    // manual save has to update it -- otherwise the button points at
+    // one file while the card names another (or names none at all,
+    // with autosave off).
+    const QString name = QString::fromStdString(
+        fs::path(path.toStdString()).filename().string());
+    if (last_card_->text().isEmpty()) {
+        last_card_->setText(tr("Saved %1").arg(name));
+        last_card_->setEnabled(true);
+    } else {
+        last_card_->setText(tr("%1 - saved %2").arg(last_card_->text(), name));
+    }
     emit receptionSaved(path);
+}
+
+void ReceivePanel::fill_for_screenshot() {
+    // The longest line `refresh_status` can build, the longest card
+    // `on_reception` can build, and the banner inside the layout.
+    status_->setText(
+        tr("Receiving mode C: frame 220/220 (100%)  SNR 8.3dB  de KD8XYZ"));
+    progress_->setValue(100);
+    last_card_->setText(
+        tr("Last: 14:32 - mode C - de KD8XYZ - SNR 8.3dB - 220/220 frames"
+           " - KD8XYZ-C-14230000.png"));
+    last_card_->setEnabled(true);
+    save_button_->setEnabled(true);
+    folder_button_->setEnabled(true);
+    banner_->show_error(
+        tr("could not save received image: read-only file system"));
 }
 
 void ReceivePanel::open_saved_folder() {
@@ -600,14 +645,23 @@ void ReceivePanel::open_saved_folder() {
     // The containing folder rather than the file: opening the picture
     // itself would launch an image viewer, and what the operator wants
     // here is the directory their captures are piling up in.
-    const fs::path dir = fs::path(*last_saved_path_).parent_path();
-    if (!QDesktopServices::openUrl(
-            QUrl::fromLocalFile(QString::fromStdString(dir.string())))) {
-        // Headless sessions and minimal desktops have no handler; say so
-        // rather than leaving a button that does nothing.
-        app_->log_event("rx", log::Severity::Warning,
-                        tr("could not open %1")
-                            .arg(QString::fromStdString(dir.string())));
+    const QString dir =
+        QString::fromStdString(fs::path(*last_saved_path_).parent_path().string());
+    // Logged unconditionally, before the call. `openUrl` reports only
+    // whether a *handler could be launched*: on Unix it ends in a
+    // detached `xdg-open`, which returns true as soon as the process
+    // starts and says nothing about whether a file manager ever
+    // appeared. So a false return is worth reporting, but a true one is
+    // not evidence of success -- and the case this button exists to
+    // survive (a minimal desktop with nothing registered) is precisely
+    // the one that returns true and does nothing. The log line is what
+    // makes that debuggable instead of baffling.
+    app_->log_event("rx", log::Severity::Info, tr("opening %1").arg(dir));
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(dir))) {
+        app_->log_event("rx", log::Severity::Error,
+                        tr("could not open %1 -- no handler for local "
+                           "folders on this desktop")
+                            .arg(dir));
     }
 }
 

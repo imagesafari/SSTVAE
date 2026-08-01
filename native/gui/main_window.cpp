@@ -33,8 +33,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     state_ = new AppState(this);
     setWindowTitle(QString::fromLatin1(APP_NAME));
     // Wider than the tabbed window it replaces, because two panes are
-    // side by side now; the height is unchanged so it still fits a
-    // 768-tall laptop panel with room for the log dock.
+    // side by side now and their minimums add (see main_window.hpp).
+    // The height is unchanged from the tabbed window.
     resize(1360, 800);
 
     panes_ = new QSplitter(Qt::Horizontal, this);
