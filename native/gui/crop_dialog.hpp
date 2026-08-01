@@ -59,6 +59,7 @@ protected:
     void paintEvent(QPaintEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
 
 private:
@@ -78,6 +79,10 @@ private:
     images::Framing framing_;
     bool dragging_ = false;
     QPointF drag_last_;
+    // Wheel deltas below one detent are kept rather than acted on, so a
+    // trackpad's small events add up to the same step a mouse notch
+    // gives in one.
+    int wheel_accum_ = 0;
 };
 
 class CropDialog : public QDialog {

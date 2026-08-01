@@ -117,58 +117,117 @@ void test_default_framing_matches_the_old_algorithm() {
                    "which is the case that can regress");
 }
 
-void test_panning_moves_the_window() {
-    // 16:9: there is width to give up, so panning must change what
-    // comes out -- and left must differ from right.
-    const Picture src = ramp(1600, 900);
-    Framing left;
-    left.center_x = 0.0;  // clamped to the leftmost legal window
-    Framing right;
-    right.center_x = 1.0;
-    const Picture a = sstvae::images::fit(src, left);
-    const Picture b = sstvae::images::fit(src, right);
-    check::is_true(a.rgb != b.rgb,
-                   "framing/pan: opposite edges give different pictures");
-
-    // And the centre is between them, not equal to either.
-    const Picture mid = sstvae::images::fit(src, Framing{});
-    check::is_true(mid.rgb != a.rgb, "framing/pan: centre differs from left");
-    check::is_true(mid.rgb != b.rgb, "framing/pan: centre differs from right");
+// Which source pixel ended up at the output's top-left corner.
+//
+// This is the oracle the framing tests needed. `ramp` encodes a pixel's
+// own x in red and y in green, so on a geometry where the cover scale
+// is exactly 1 -- and `resize` then returns the source untouched -- the
+// output's corner pixel *names the crop offset*. Inequality assertions
+// cannot do this: two real mutants (a mirrored pan axis, and zoom
+// applied to width only) both passed a suite built out of `a != b`.
+struct Corner {
+    int x;
+    int y;
+};
+Corner corner_source_of(const Picture& out) {
+    return {out.rgb[0], out.rgb[1]};
 }
 
-void test_zoom_crops_tighter() {
-    const Picture src = ramp(1200, 900);  // already 4:3
-    const Picture plain = sstvae::images::fit(src, Framing{});
+void test_panning_selects_the_named_columns() {
+    // 1280x480: the cover scale is max(640/1280, 480/480) = 1.0
+    // exactly, so no resampling happens and the crop is a pure
+    // sub-rectangle whose offset the corner pixel reports.
+    const Picture src = ramp(1280, 480);
+
+    struct Case {
+        double center_x;
+        int want_left;
+        const char* what;
+    };
+    // left = clamp(floor(center*1280 - 320), 0, 640)
+    const Case cases[] = {
+        {0.0, 0, "hard left"},
+        {0.25, 0, "quarter, clamped to the left edge"},
+        {0.5, 320, "centre"},
+        {0.75, 640, "three quarters, clamped to the right edge"},
+        {1.0, 640, "hard right"},
+    };
+    for (const Case& c : cases) {
+        Framing f;
+        f.center_x = c.center_x;
+        const Picture out = sstvae::images::fit(src, f);
+        const Corner got = corner_source_of(out);
+        check::equal(got.x, c.want_left % 256,
+                     std::string("framing/pan: ") + c.what +
+                         " starts at source column " +
+                         std::to_string(c.want_left));
+        check::equal(got.y, 0, std::string("framing/pan: ") + c.what +
+                                   " starts at source row 0");
+    }
+
+    // Directional, stated separately so a mirrored axis is unmistakable
+    // rather than merely "different".
+    Framing left;
+    left.center_x = 0.0;
+    Framing right;
+    right.center_x = 1.0;
+    check::is_true(corner_source_of(sstvae::images::fit(src, left)).x <
+                       corner_source_of(sstvae::images::fit(src, right)).x,
+                   "framing/pan: a smaller centre selects a smaller column");
+}
+
+void test_zoom_crops_both_axes_equally() {
+    // 1280x960 is 4:3, so the cover scale is 0.5 and zoom 2 makes it
+    // exactly 1.0 -- again no resampling. The window is then the middle
+    // 640x480 of the source, and both offsets are checkable.
+    const Picture src = ramp(1280, 960);
     Framing zoomed;
     zoomed.zoom = 2.0;
-    const Picture tight = sstvae::images::fit(src, zoomed);
-    check::equal(tight.width, sstvae::images::IMG_W, "framing/zoom: still 640");
-    check::equal(tight.height, sstvae::images::IMG_H, "framing/zoom: still 480");
-    check::is_true(tight.rgb != plain.rgb,
-                   "framing/zoom: a zoomed 4:3 picture is not the plain fit");
+    const Picture out = sstvae::images::fit(src, zoomed);
 
-    // Zoom below 1 would expose edges with nothing behind them, so it
-    // is clamped rather than honoured.
+    const Corner got = corner_source_of(out);
+    check::equal(got.x, 320 % 256, "framing/zoom: left offset is 320");
+    check::equal(got.y, 240 % 256, "framing/zoom: top offset is 240");
+
+    // The whole sub-rectangle, not only its corner: this is what fails
+    // if zoom is applied to one axis and not the other, since the
+    // squashed intermediate changes every row.
+    Picture want(sstvae::images::IMG_W, sstvae::images::IMG_H);
+    for (int y = 0; y < sstvae::images::IMG_H; ++y) {
+        const std::uint8_t* row =
+            src.rgb.data() +
+            ((static_cast<std::size_t>(y) + 240) * 1280 + 320) * 3;
+        std::copy(row, row + static_cast<std::size_t>(sstvae::images::IMG_W) * 3,
+                  want.rgb.begin() +
+                      static_cast<std::size_t>(y) * sstvae::images::IMG_W * 3);
+    }
+    check::is_true(out.rgb == want.rgb,
+                   "framing/zoom: the output is exactly the centre 640x480 "
+                   "of a 2x-zoomed 1280x960 source");
+
+    // Below 1 would expose edges with nothing behind them.
     Framing under;
     under.zoom = 0.25;
-    check::is_true(sstvae::images::fit(src, under).rgb == plain.rgb,
-                   "framing/zoom: below 1 is clamped to cover");
+    check::is_true(
+        sstvae::images::fit(src, under).rgb ==
+            sstvae::images::fit(src, Framing{}).rgb,
+        "framing/zoom: below 1 is clamped to cover");
 }
 
 void test_out_of_range_centres_are_clamped() {
-    const Picture src = ramp(1600, 900);
+    const Picture src = ramp(1280, 480);
     Framing far;
     far.center_x = 5.0;
     far.center_y = -3.0;
     const Picture out = sstvae::images::fit(src, far);
     check::equal(out.width, sstvae::images::IMG_W, "framing/clamp: right size");
-    // Equal to the rightmost legal window rather than reading out of
-    // bounds -- which would be a crash or garbage, not a wrong picture.
-    Framing edge;
-    edge.center_x = 1.0;
-    edge.center_y = 0.0;
-    check::is_true(out.rgb == sstvae::images::fit(src, edge).rgb,
-                   "framing/clamp: a far centre lands on the edge window");
+    // Named offsets rather than a comparison against another call of
+    // the same function: the rightmost legal window starts at column
+    // 640, and the vertical has no room at all so it starts at row 0.
+    const Corner got = corner_source_of(out);
+    check::equal(got.x, 640 % 256,
+                 "framing/clamp: a far-right centre lands on column 640");
+    check::equal(got.y, 0, "framing/clamp: a negative centre lands on row 0");
 }
 
 void test_identity_shortcut_respects_framing() {
@@ -193,9 +252,9 @@ int main() {
     check::current_step.store("default_matches_bare");
     test_default_framing_matches_the_old_algorithm();
     check::current_step.store("pan");
-    test_panning_moves_the_window();
+    test_panning_selects_the_named_columns();
     check::current_step.store("zoom");
-    test_zoom_crops_tighter();
+    test_zoom_crops_both_axes_equally();
     check::current_step.store("clamp");
     test_out_of_range_centres_are_clamped();
     check::current_step.store("identity");

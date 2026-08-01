@@ -45,7 +45,11 @@ QPixmap to_pixmap(const images::Picture& picture) {
 
 CropView::CropView(QWidget* parent) : QWidget(parent) {
     setMinimumSize(280, 210);
-    setCursor(Qt::OpenHandCursor);
+    // A move cursor, not a hand: `paintEvent` holds the picture still
+    // and moves the window over it, so what the pointer carries is the
+    // *window*. A hand would promise the other model -- picture sliding
+    // under a fixed frame -- and the two want opposite drag signs.
+    setCursor(Qt::SizeAllCursor);
 }
 
 QSize CropView::sizeHint() const { return {520, 390}; }
@@ -125,6 +129,12 @@ void CropView::paintEvent(QPaintEvent* event) {
     if (pixmap_.isNull()) return;
 
     const QRectF area = source_rect();
+    // Smooth, like every other scaled picture in this app: a full-size
+    // photograph into a ~520 px preview is a 6x downscale, and
+    // nearest-neighbour point-sampling moires fine detail badly -- in a
+    // dialog whose whole job is showing the operator what they are
+    // giving up.
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     painter.drawPixmap(area, pixmap_, QRectF(pixmap_.rect()));
 
     // Everything outside the window is dimmed rather than hidden, so
@@ -152,7 +162,6 @@ void CropView::mousePressEvent(QMouseEvent* event) {
     }
     dragging_ = true;
     drag_last_ = event->position();
-    setCursor(Qt::ClosedHandCursor);
 }
 
 void CropView::mouseMoveEvent(QMouseEvent* event) {
@@ -161,22 +170,48 @@ void CropView::mouseMoveEvent(QMouseEvent* event) {
     if (area.isEmpty()) return;
     const QPointF delta = event->position() - drag_last_;
     drag_last_ = event->position();
-    // Drag moves the *picture* under a fixed window, which is what the
-    // hand cursor promises, so the centre moves against the pointer.
-    framing_.center_x -= delta.x() / area.width();
-    framing_.center_y -= delta.y() / area.height();
+    // The window follows the pointer, because the window is what moves
+    // on screen: `source_rect` has no framing dependence, so the
+    // picture is fixed and `crop_rect` is what the centre moves. The
+    // opposite sign would be right for a widget that panned the
+    // picture instead -- and it is the sign this had, so dragging right
+    // selected further *left*.
+    framing_.center_x += delta.x() / area.width();
+    framing_.center_y += delta.y() / area.height();
     clamp_center();
     update();
     emit framingChanged();
 }
 
+void CropView::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton) dragging_ = false;
+    QWidget::mouseReleaseEvent(event);
+}
+
 void CropView::wheelEvent(QWheelEvent* event) {
-    const int notches = event->angleDelta().y();
-    if (notches == 0) return;
-    framing_.zoom *= (notches > 0 ? 1.1 : 1.0 / 1.1);
-    clamp_center();
-    update();
-    emit framingChanged();
+    // Accumulated to whole notches rather than one step per event. A
+    // conventional wheel delivers 120 units per detent, but a trackpad
+    // or a high-resolution wheel delivers a handful of units per event
+    // -- so "one event, one 1.1x step" turns a small two-finger gesture
+    // into a run from 1x to the 4x ceiling.
+    wheel_accum_ += event->angleDelta().y();
+    constexpr int NOTCH = 120;
+    bool moved = false;
+    while (wheel_accum_ >= NOTCH) {
+        wheel_accum_ -= NOTCH;
+        framing_.zoom *= 1.1;
+        moved = true;
+    }
+    while (wheel_accum_ <= -NOTCH) {
+        wheel_accum_ += NOTCH;
+        framing_.zoom /= 1.1;
+        moved = true;
+    }
+    if (moved) {
+        clamp_center();
+        update();
+        emit framingChanged();
+    }
     event->accept();
 }
 

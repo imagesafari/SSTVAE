@@ -561,10 +561,12 @@ void TransmitPanel::load_image(const QString& path) {
     const bool four_by_three =
         source_->width * images::IMG_H == source_->height * images::IMG_W;
     if (!four_by_three) {
-        choose_framing();
-    } else {
-        apply_framing();
+        CropDialog dialog(*source_, framing_, this);
+        if (dialog.exec() == QDialog::Accepted) framing_ = dialog.framing();
     }
+    // Once, either way: cancelling the dialog means "the default
+    // framing", not "do not show me the picture".
+    apply_framing();
 
     app_->config().folders.transmit_dir =
         QFileInfo(path).absolutePath().toStdString();
@@ -574,16 +576,38 @@ void TransmitPanel::load_image(const QString& path) {
 void TransmitPanel::choose_framing() {
     if (!source_) return;
     CropDialog dialog(*source_, framing_, this);
-    if (dialog.exec() == QDialog::Accepted) framing_ = dialog.framing();
+    // Cancel changes nothing, so nothing is re-applied -- re-fitting
+    // would also throw away a speculative optimization that is still
+    // valid for the picture on screen.
+    if (dialog.exec() != QDialog::Accepted) return;
+    framing_ = dialog.framing();
     apply_framing();
 }
 
 void TransmitPanel::apply_framing() {
     if (!source_) return;
-    // Framed to the transmit size here, not at send time: the overlay's
-    // coordinates are fractions of the canvas, so the operator has to
-    // be composing against the frame that will actually go out.
-    editor_->set_base_image(images::fit(*source_, framing_));
+    images::Picture framed;
+    try {
+        // Framed to the transmit size here, not at send time: the
+        // overlay's coordinates are fractions of the canvas, so the
+        // operator has to be composing against the frame that will
+        // actually go out.
+        //
+        // In the try because it allocates and resamples: a huge source
+        // at a high zoom can throw, and this runs from a slot, where an
+        // escaping exception takes the process down instead of showing
+        // a message. It used to sit inside `load_image`'s handler.
+        framed = images::fit(*source_, framing_);
+    } catch (const std::exception& e) {
+        app_->log_event("tx", log::Severity::Error,
+                        tr("could not frame %1: %2")
+                            .arg(QFileInfo(source_path_).fileName(),
+                                 QString::fromUtf8(e.what())));
+        QMessageBox::critical(this, tr("Could not frame the picture"),
+                              QString::fromUtf8(e.what()));
+        return;
+    }
+    editor_->set_base_image(framed);
 
     // An honest caption. The old one said the filename and nothing
     // else, so a picture that had lost a quarter of its width looked
@@ -597,7 +621,10 @@ void TransmitPanel::apply_framing() {
     }
     image_label_->setText(caption);
     frame_button_->setEnabled(true);
-    schedule_optimization();
+    // No schedule_optimization() here: `set_base_image` emits
+    // documentChanged, which is already connected to it. Calling it
+    // again would convert the picture twice and restart the debounce
+    // the first call had just started.
 }
 
 void TransmitPanel::set_last_rx_image(const images::Picture& image) {
