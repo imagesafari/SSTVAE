@@ -30,6 +30,15 @@ QSize PictureBox::sizeHint() const {
     return QSize(width(), std::max(MIN_H, width() * images::IMG_H / images::IMG_W));
 }
 
+void PictureBox::set_height_limit(int limit) {
+    if (height_limit_ == limit) return;
+    height_limit_ = limit;
+    updateGeometry();
+    // Re-run the cap arithmetic against the new bound straight away,
+    // rather than waiting for a resize that may never come.
+    resize(size());
+}
+
 void PictureBox::set_picture(const QPixmap& picture) {
     source_ = picture;
     rescale();
@@ -51,7 +60,8 @@ void PictureBox::resizeEvent(QResizeEvent* event) {
     // maximum before this runs. `updateGeometry` is what closes that --
     // it asks the layout for another pass, in which the new cap applies.
     // The guard keeps that to one extra pass rather than a loop.
-    const int cap = std::max(MIN_H, width() * images::IMG_H / images::IMG_W);
+    int cap = std::max(MIN_H, width() * images::IMG_H / images::IMG_W);
+    if (height_limit_ > 0) cap = std::min(cap, std::max(MIN_H, height_limit_));
     if (maximumHeight() != cap) {
         setMaximumHeight(cap);
         updateGeometry();

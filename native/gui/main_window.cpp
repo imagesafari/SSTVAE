@@ -20,6 +20,7 @@
 #include "app_state.hpp"
 #include "log_pane.hpp"
 #include "pane_container.hpp"
+#include "waterfall.hpp"
 #include "rig/hamlib.hpp"
 #include "rx_panel.hpp"
 #include "settings_dialog.hpp"
@@ -42,8 +43,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // The height is unchanged from the tabbed window.
     resize(1360, 800);
 
+    // **The spectrum spans the whole window, above both panes** -- and
+    // above the *tab widget* too, so it is on screen in both layouts.
+    // It is the one widget here whose job is resolving detail across a
+    // frequency axis, and inside the receive pane it had about a third
+    // of the width to do it in. The receive panel still drives it (it
+    // owns the ring buffer), so ownership moved and control did not.
+    //
+    // Keeping it outside the tabs is deliberate: tabs exist for a
+    // narrow screen, and what you give up there is seeing the band
+    // while you compose. The strip is the cheapest way to keep it.
+    waterfall_ = new Waterfall(this);
+    waterfall_->setMinimumHeight(90);
+    waterfall_->setMaximumHeight(150);
+
     rx_panel_ = new ReceivePanel(state_);
     tx_panel_ = new TransmitPanel(state_);
+    rx_panel_->attach_waterfall(waterfall_);
 
     // **Each pane is named.** The tabs this replaced carried the only
     // labels that said which half was which, and dropping them left two
@@ -57,6 +73,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // what lets the same two words be a group-box title in one layout
     // and a tab label in the other.
     panes_ = new PaneContainer(rx_panel_, tr("Receive"), tx_panel_, tr("Transmit"), this);
+    // Equal panes are not equal pictures on their own -- the two halves
+    // carry different controls beneath, so the leftover height differs.
+    // The container holds both boxes to the smaller allowance.
+    panes_->set_picture_areas(rx_panel_->picture_area(), tx_panel_->picture_area());
 
     // Half duplex: our own transmission must not be decoded back into a
     // received picture. Frequency polling pauses too -- the answer is
@@ -73,7 +93,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // The most recent picture becomes available as a transmit inset.
     connect(rx_panel_, &ReceivePanel::imageReceived, tx_panel_,
             &TransmitPanel::set_last_rx_image);
-    setCentralWidget(panes_);
+    auto* central = new QWidget(this);
+    auto* central_layout = new QVBoxLayout(central);
+    central_layout->setContentsMargins(0, 0, 0, 0);
+    central_layout->setSpacing(4);
+    central_layout->addWidget(waterfall_);
+    central_layout->addWidget(panes_, 1);
+    setCentralWidget(central);
 
     build_menu();
     build_status_bar();

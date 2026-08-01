@@ -22,6 +22,15 @@ namespace {
 // Side of the square resize grip, in widget pixels.
 constexpr int HANDLE = 10;
 
+// The empty canvas, matching `PictureBox`'s empty state exactly so the
+// two panes look like a pair before either holds a picture. Kept in
+// step with picture_box.cpp by hand -- two constants rather than a
+// shared header, because the receive side is a palette on a QLabel and
+// this side is a painter fill, and a shared symbol would imply they are
+// applied the same way.
+const QColor EMPTY_CANVAS(0x20, 0x20, 0x24);
+const QColor EMPTY_CANVAS_TEXT(0x88, 0x88, 0x88);
+
 QImage to_qimage(const images::Picture& picture) {
     const QImage view(picture.rgb.data(), picture.width, picture.height,
                       picture.width * 3, QImage::Format_RGB888);
@@ -60,6 +69,13 @@ OverlayEditor::OverlayEditor(QWidget* parent) : QWidget(parent) {
 }
 
 OverlayEditor::~OverlayEditor() = default;
+
+void OverlayEditor::set_height_limit(int limit) {
+    if (height_limit_ == limit) return;
+    height_limit_ = limit;
+    updateGeometry();
+    resize(size());
+}
 
 QSize OverlayEditor::sizeHint() const {
     return QSize(overlay::CANVAS_W, overlay::CANVAS_H);
@@ -223,10 +239,18 @@ void OverlayEditor::paintEvent(QPaintEvent*) {
 
     if (!composed_valid_) rerender();
     if (composed_.empty()) {
+        // **Draw the empty canvas as a 4:3 box, not as nothing.** The
+        // two panes are locked to the same width so the pictures are
+        // the same size, but an empty composer that painted only its
+        // own background made one side a dark rectangle and the other
+        // a void -- so they measured equal and did not read equal. The
+        // same fill and the same disabled text as `PictureBox`, which
+        // is the receive side's empty state, so the pair is symmetric
+        // before either has a picture in it.
         painter.fillRect(this->rect(), palette().window());
-        painter.setPen(palette().color(QPalette::Disabled, QPalette::WindowText));
-        painter.drawText(this->rect(), Qt::AlignCenter,
-                         tr("Choose a picture to send"));
+        painter.fillRect(rect, EMPTY_CANVAS);
+        painter.setPen(EMPTY_CANVAS_TEXT);
+        painter.drawText(rect, Qt::AlignCenter, tr("Choose a picture to send"));
         return;
     }
 
@@ -354,7 +378,8 @@ void OverlayEditor::resizeEvent(QResizeEvent* event) {
     // letterboxes in *both* directions, so a pane too short for 4:3
     // draws a smaller centred canvas rather than a stretched one, and
     // the handles follow it because they come from the same rectangle.
-    const int cap = std::max(120, width() * overlay::CANVAS_H / overlay::CANVAS_W);
+    int cap = std::max(120, width() * overlay::CANVAS_H / overlay::CANVAS_W);
+    if (height_limit_ > 0) cap = std::min(cap, std::max(120, height_limit_));
     if (maximumHeight() != cap) {
         setMaximumHeight(cap);
         // The cap trails the width by one pass (Qt clamps incoming

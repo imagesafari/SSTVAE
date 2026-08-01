@@ -48,6 +48,7 @@ namespace sstvae::gui {
 class AppState;
 class LogPane;
 class ReceivePanel;
+class Waterfall;
 class TransmitPanel;
 
 class MainWindow : public QMainWindow {
@@ -89,6 +90,7 @@ private:
 
     AppState* state_ = nullptr;
     PaneContainer* panes_ = nullptr;
+    Waterfall* waterfall_ = nullptr;
     ReceivePanel* rx_panel_ = nullptr;
     TransmitPanel* tx_panel_ = nullptr;
     QLabel* ptt_label_ = nullptr;

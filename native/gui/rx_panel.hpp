@@ -21,6 +21,7 @@
 #define SSTVAE_GUI_RX_PANEL_HPP
 
 #include <QPixmap>
+#include <QPointer>
 #include <QWidget>
 
 #include <atomic>
@@ -31,6 +32,9 @@
 
 #include "images/types.hpp"
 #include "picture_box.hpp"
+// Complete type, not a forward declaration: QPointer<T> instantiates
+// static_casts through QObject and needs to know T derives from it.
+#include "waterfall.hpp"
 #include "rx/engine.hpp"
 #include "rx/ringbuffer.hpp"
 
@@ -47,7 +51,6 @@ namespace sstvae::gui {
 
 class AppState;
 class ErrorBanner;
-class Waterfall;
 
 class ReceivePanel : public QWidget {
     Q_OBJECT
@@ -57,6 +60,25 @@ public:
     ~ReceivePanel() override;
 
     bool listening() const;
+
+    // The spectrum strip now spans the whole window rather than living
+    // in this pane -- it is the one widget whose job is resolving
+    // detail across a frequency axis, and a third of the window was
+    // never enough for it. The panel still drives it (it owns the ring
+    // buffer), so ownership moved to MainWindow while control did not.
+    // Null until attached, and every use is guarded.
+    void attach_waterfall(Waterfall* waterfall) { waterfall_ = waterfall; }
+    // Null-safe accessor. **Not defensive programming for its own
+    // sake**: moving the strip up to the window made it a *sibling* of
+    // this panel rather than a child, and it is added to the central
+    // widget's layout first -- so at teardown `~QWidget` deletes it
+    // before the panel whose `stop()` still calls `set_ring(nullptr)`.
+    // A `QPointer` goes null when the widget dies, which turns a
+    // use-after-free at every exit into a no-op.
+    Waterfall* fall() const { return waterfall_.data(); }
+    // The 4:3 picture area, so the container can hold it to the same
+    // size as the transmit pane's. See `PaneContainer::equalise`.
+    QWidget* picture_area() const;
 
     // Re-read the settings the panel mirrors in its own controls. The
     // autosave checkbox exists in both places, so a change made in the
@@ -127,7 +149,7 @@ private:
     QLabel* status_ = nullptr;
     QLabel* last_card_ = nullptr;
     QProgressBar* progress_ = nullptr;
-    Waterfall* waterfall_ = nullptr;
+    QPointer<Waterfall> waterfall_;
     QPushButton* start_button_ = nullptr;
     QPushButton* stop_button_ = nullptr;
     QPushButton* save_button_ = nullptr;

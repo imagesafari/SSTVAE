@@ -256,6 +256,8 @@ void TransmitPanel::on_optimizer_progress() {
     }
 }
 
+QWidget* TransmitPanel::picture_area() const { return editor_; }
+
 void TransmitPanel::build_ui() {
     // Dropping a file on the composer loads it -- the gesture every
     // other picture application answers, and the one an operator
@@ -272,68 +274,81 @@ void TransmitPanel::build_ui() {
     banner_ = new ErrorBanner(this);
     layout->addWidget(banner_);
 
-    auto* splitter = new QSplitter(Qt::Horizontal, this);
-
-    editor_ = new OverlayEditor(splitter);
+    editor_ = new OverlayEditor(this);
     connect(editor_, &OverlayEditor::selectionChanged, this,
             &TransmitPanel::on_selection);
     connect(editor_, &OverlayEditor::documentChanged, this,
             &TransmitPanel::schedule_optimization);
-    // The editor sits in a container that can absorb the leftover
-    // height: it is pinned to the transmitted frame's 4:3, and a
-    // splitter would otherwise stretch it to fill.
-    auto* canvas_holder = new QWidget(splitter);
-    auto* canvas_layout = new QVBoxLayout(canvas_holder);
-    canvas_layout->setContentsMargins(0, 0, 0, 0);
-    canvas_layout->addWidget(editor_);
-    canvas_layout->addStretch(1);
-    splitter->addWidget(canvas_holder);
-    splitter->addWidget(build_side_panel());
-    splitter->setStretchFactor(0, 3);
-    splitter->setStretchFactor(1, 1);
-    layout->addWidget(splitter, 1);
+    // Tools *under* the canvas, not beside it. Beside it they cost the
+    // composer ~195 px of width that the receive preview does not pay,
+    // so the two pictures could never be the same size however the
+    // splitter was weighted -- and the received picture is the one you
+    // cannot get back, so it is the one that should not lose.
+    layout->addWidget(editor_);
+    layout->addWidget(build_tool_row());
+    properties_ = build_properties(this);
+    // Hidden rather than merely disabled: beside the canvas an empty
+    // box cost nothing, but under it every row is height the picture
+    // could have had, and this one is meaningless without a selection.
+    properties_->hide();
+    layout->addWidget(properties_);
+    layout->addStretch(1);
     layout->addWidget(build_send_bar());
 }
 
-QWidget* TransmitPanel::build_side_panel() {
+// One horizontal row of tools under the canvas, replacing the column
+// that used to sit beside it. The groupings the column had (Picture /
+// Overlay) are carried by separator lines rather than by boxes: three
+// nested titled boxes in a row would cost more height than the buttons.
+QWidget* TransmitPanel::build_tool_row() {
     auto* panel = new QWidget(this);
-    auto* column = new QVBoxLayout(panel);
+    auto* column = new QHBoxLayout(panel);
+    column->setContentsMargins(0, 0, 0, 0);
 
-    auto* source = new QGroupBox(tr("Picture"), panel);
-    auto* source_layout = new QVBoxLayout(source);
-    choose_button_ = new QPushButton(tr("Choose image..."), source);
+    auto* source = panel;
+    auto* source_layout = column;
+    choose_button_ = new QPushButton(tr("Picture..."), source);
     connect(choose_button_, &QPushButton::clicked, this,
             &TransmitPanel::choose_image);
     image_label_ = new QLabel(tr("No image selected"), source);
     image_label_->setWordWrap(true);
-    frame_button_ = new QPushButton(tr("Adjust framing..."), source);
+    frame_button_ = new QPushButton(tr("Framing..."), source);
     frame_button_->setToolTip(
         tr("Choose which part of the picture is sent, for anything that is "
            "not 4:3"));
     frame_button_->setEnabled(false);
     connect(frame_button_, &QPushButton::clicked, this,
             &TransmitPanel::choose_framing);
+    // The caption is the one thing here that is text rather than a
+    // control, and it is the widest; it gets the row's slack and elides
+    // rather than setting a width floor for the whole window.
+    image_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     source_layout->addWidget(choose_button_);
-    source_layout->addWidget(image_label_);
     source_layout->addWidget(frame_button_);
-    column->addWidget(source);
+    source_layout->addWidget(image_label_, 1);
 
-    auto* overlay_box = new QGroupBox(tr("Overlay"), panel);
-    auto* overlay_layout = new QVBoxLayout(overlay_box);
-    auto* add_text = new QPushButton(tr("Add text"), overlay_box);
+    auto* rule = new QFrame(panel);
+    rule->setFrameShape(QFrame::VLine);
+    rule->setFrameShadow(QFrame::Sunken);
+    column->addWidget(rule);
+
+    auto* overlay_box = panel;
+    auto* overlay_layout = column;
+    auto* add_text = new QPushButton(tr("+ Text"), overlay_box);
     connect(add_text, &QPushButton::clicked, this, [this] {
         const std::string& callsign = app_->config().callsign;
         editor_->add_text(callsign.empty() ? std::string("TEXT") : callsign);
     });
-    add_rx_button_ = new QPushButton(tr("Add last received image"), overlay_box);
+    add_rx_button_ = new QPushButton(tr("+ Last RX"), overlay_box);
     // Nothing to insert until something has been received: the item it
     // adds resolves at render time, so before the first reception it
     // drew nothing and looked like a button that did not work.
     add_rx_button_->setEnabled(false);
-    add_rx_button_->setToolTip(tr("Available once a picture has been received"));
+    add_rx_button_->setToolTip(
+        tr("Insert the last received picture. Available once one has arrived."));
     connect(add_rx_button_, &QPushButton::clicked, editor_,
             &OverlayEditor::add_last_rx_inset);
-    auto* add_image = new QPushButton(tr("Add image from file..."), overlay_box);
+    auto* add_image = new QPushButton(tr("+ Image..."), overlay_box);
     connect(add_image, &QPushButton::clicked, this, [this] {
         const QString path = QFileDialog::getOpenFileName(
             this, tr("Choose an inset image"),
@@ -341,16 +356,19 @@ QWidget* TransmitPanel::build_side_panel() {
             QString::fromLatin1(IMAGE_FILTER));
         if (!path.isEmpty()) editor_->add_image_inset(path.toStdString());
     });
-    auto* remove = new QPushButton(tr("Remove selected"), overlay_box);
+    auto* remove = new QPushButton(tr("Remove"), overlay_box);
     connect(remove, &QPushButton::clicked, editor_,
             &OverlayEditor::remove_selected);
     for (QPushButton* button : {add_text, add_rx_button_, add_image, remove}) {
         overlay_layout->addWidget(button);
     }
     column->addWidget(overlay_box);
-
-    properties_ = build_properties(panel);
-    column->addWidget(properties_);
+    // **The properties box is NOT built here.** `build_ui` owns it, so
+    // constructing a second one in this row left an orphan that nothing
+    // ever updated -- and, because it sat in the row, it added 535 px to
+    // the transmit pane's minimum width. That is most of the imbalance
+    // that made the two pictures unequal: 1088 px against the receive
+    // pane's 464.
     column->addStretch(1);
     return panel;
 }
@@ -358,7 +376,9 @@ QWidget* TransmitPanel::build_side_panel() {
 QGroupBox* TransmitPanel::build_properties(QWidget* parent) {
     auto* box = new QGroupBox(tr("Selected item"), parent);
     box->setEnabled(false);
-    auto* form = new QFormLayout(box);
+    // Horizontal: a form stacks its rows, which under the canvas would
+    // cost five rows of height. Side by side it is one.
+    auto* form = new QHBoxLayout(box);
 
     // Multi-line: a station's callsign, grid and name belong to one
     // item, not three stacked by hand. Enter inserts a newline, so Tab
@@ -370,7 +390,14 @@ QGroupBox* TransmitPanel::build_properties(QWidget* parent) {
     // and sending it on the air. Let the drop fall through to the
     // panel, which loads it.
     text_edit_->setAcceptDrops(false);
-    text_edit_->setFixedHeight(80);
+    // Two lines rather than four: still multi-line (a callsign, a grid
+    // and a name belong to one item), but in a row under the canvas the
+    // height is the picture's.
+    text_edit_->setFixedHeight(46);
+    // Ignored horizontally: in a row this would otherwise be a width
+    // floor under the whole window, which is what the tool row's long
+    // button captions already were.
+    text_edit_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     connect(text_edit_, &QPlainTextEdit::textChanged, this, [this] {
         if (auto* item = editing_item()) {
             if (auto* text = std::get_if<overlay::TextItem>(item)) {
@@ -379,7 +406,8 @@ QGroupBox* TransmitPanel::build_properties(QWidget* parent) {
             }
         }
     });
-    form->addRow(tr("Text"), text_edit_);
+    form->addWidget(new QLabel(tr("Text"), box));
+    form->addWidget(text_edit_, 1);
 
     align_combo_ = new QComboBox(box);
     align_combo_->addItem(tr("Left"), QStringLiteral("left"));
@@ -393,7 +421,8 @@ QGroupBox* TransmitPanel::build_properties(QWidget* parent) {
             }
         }
     });
-    form->addRow(tr("Align"), align_combo_);
+    form->addWidget(new QLabel(tr("Align"), box));
+    form->addWidget(align_combo_);
 
     size_spin_ = new QDoubleSpinBox(box);
     size_spin_->setRange(0.01, 1.5);
@@ -409,7 +438,8 @@ QGroupBox* TransmitPanel::build_properties(QWidget* parent) {
         }
         editor_->refresh_item();
     });
-    form->addRow(tr("Size"), size_spin_);
+    form->addWidget(new QLabel(tr("Size"), box));
+    form->addWidget(size_spin_);
 
     rotation_spin_ = new QDoubleSpinBox(box);
     rotation_spin_->setRange(-180.0, 180.0);
@@ -421,7 +451,8 @@ QGroupBox* TransmitPanel::build_properties(QWidget* parent) {
                 std::visit([value](auto& i) { i.rotation = value; }, *item);
                 editor_->refresh_item();
             });
-    form->addRow(tr("Rotation"), rotation_spin_);
+    form->addWidget(new QLabel(tr("Rotation"), box));
+    form->addWidget(rotation_spin_);
 
     color_button_ = new QPushButton(tr("Colour..."), box);
     connect(color_button_, &QPushButton::clicked, this, [this] {
@@ -436,7 +467,8 @@ QGroupBox* TransmitPanel::build_properties(QWidget* parent) {
         set_color_swatch(color);
         editor_->refresh_item();
     });
-    form->addRow(tr("Colour"), color_button_);
+    form->addWidget(new QLabel(tr("Colour"), box));
+    form->addWidget(color_button_);
     return box;
 }
 
@@ -761,6 +793,9 @@ overlay::Item* TransmitPanel::editing_item() {
 }
 
 void TransmitPanel::on_selection(overlay::Item* item) {
+    // Shown only with a selection: under the canvas this row is height
+    // the picture could have had.
+    properties_->setVisible(item != nullptr);
     properties_->setEnabled(item != nullptr);
     if (item == nullptr) {
         // Otherwise the last item's colour stays painted on a disabled

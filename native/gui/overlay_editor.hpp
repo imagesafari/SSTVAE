@@ -22,6 +22,8 @@
 #include <QRect>
 #include <QWidget>
 
+#include "height_limited.hpp"
+
 #include <optional>
 #include <string>
 
@@ -31,7 +33,7 @@
 
 namespace sstvae::gui {
 
-class OverlayEditor : public QWidget {
+class OverlayEditor : public QWidget, public HeightLimited {
     Q_OBJECT
 
 public:
@@ -39,6 +41,9 @@ public:
     ~OverlayEditor() override;
 
     QSize sizeHint() const override;
+    // An upper bound imposed from outside, on top of this widget's own
+    // 4:3 cap -- see PictureBox::set_height_limit for why both exist.
+    void set_height_limit(int limit) override;
     // **No `heightForWidth`, deliberately.** It was here, with a
     // comment saying a `QSplitter` ignores it -- true, and the reason it
     // did no visible harm for as long as it did. A `QTabWidget`
@@ -127,6 +132,7 @@ private:
     QRect handle_rect(const overlay::Bbox& box) const;
     void select(int index);
 
+    int height_limit_ = 0;  // 0 = none
     overlay::Doc doc_;
     images::Picture base_;
     std::optional<images::Picture> last_rx_;

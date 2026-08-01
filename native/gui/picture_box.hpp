@@ -38,11 +38,13 @@
 #include <QString>
 #include <QWidget>
 
+#include "height_limited.hpp"
+
 class QLabel;
 
 namespace sstvae::gui {
 
-class PictureBox : public QWidget {
+class PictureBox : public QWidget, public HeightLimited {
 public:
     // Never smaller than this, whatever the picture's shape -- and
     // crucially, never *larger* a minimum than this either, which is
@@ -61,6 +63,13 @@ public:
     // from the original rather than compounding losses.
     void set_picture(const QPixmap& picture);
 
+    // An upper bound imposed from outside, on top of this box's own 4:3
+    // cap. The container uses it to hold this picture to the same size
+    // as the transmit canvas; without it the two caps fight and the
+    // last `resizeEvent` to run wins, which is how they ended up 523 px
+    // against 480 px on panes of identical width.
+    void set_height_limit(int limit) override;
+
     // The label's rectangle within this widget. For tests: an inverted
     // axis or a dropped centring offset still looks like a working
     // preview until a picture is in it.
@@ -72,6 +81,7 @@ protected:
 private:
     void rescale();
 
+    int height_limit_ = 0;  // 0 = none
     QLabel* label_ = nullptr;
     QPixmap source_;
 };

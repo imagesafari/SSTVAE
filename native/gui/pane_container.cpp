@@ -1,11 +1,17 @@
 #include "pane_container.hpp"
 
+#include "height_limited.hpp"
+
 #include <QFont>
 #include <QGroupBox>
-#include <QSplitter>
+#include <QHBoxLayout>
+#include <QLayout>
+#include <QResizeEvent>
+#include <QSizePolicy>
 #include <QTabWidget>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <utility>
 
 namespace sstvae::gui {
@@ -79,19 +85,42 @@ QWidget* PaneContainer::titled(QWidget* content, const QString& title) {
 
 QWidget* PaneContainer::build_split() {
     tabs_ = nullptr;
-    auto* splitter = new QSplitter(Qt::Horizontal);
-    splitter->addWidget(titled(first_, first_title_));
-    splitter->addWidget(titled(second_, second_title_));
-    // A wide handle so the division between the two reads as a
-    // division, not as a gap between controls.
-    splitter->setHandleWidth(6);
-    // The composer is the wider of the two by default -- it holds an
-    // editable 4:3 canvas, where the monitor holds a preview and a
-    // spectrum strip. Neither is pinned: both are collapsible, so an
-    // operator who is only listening can push the composer shut and get
-    // the whole window back.
-    splitter->setStretchFactor(0, 2);
-    splitter->setStretchFactor(1, 3);
+    // **Locked equal, and a plain layout rather than a splitter**
+    // (decided 2026-08-03). The complaint this answers is that the
+    // composer had roughly 2.5x the received picture's area, and the
+    // received picture is the one you cannot ask for again.
+    //
+    // A `QSplitter` cannot deliver "equal" on its own, and the reason is
+    // worth keeping: it satisfies both children's *minimum* widths
+    // before it applies any stretch factor. The transmit pane's minimum
+    // was far larger than the receive pane's, so a 1:1 weighting still
+    // produced 440 px against 1090 px -- which is what stalled this
+    // layout the first time it was attempted.
+    //
+    // The fix is to **equalise the minimums** rather than to ignore
+    // them. Give both panes the larger of the two floors and a 1:1
+    // stretch, and equal width follows arithmetically at every size:
+    // the layout satisfies two identical minimums and then splits what
+    // is left in half. Ignoring the demands instead would have "worked"
+    // by letting the wider pane's controls clip, which is trading a
+    // visible problem for a hidden one.
+    //
+    // It only became affordable once the transmit pane stopped asking
+    // for 1088 px (a duplicate properties box was sitting in its tool
+    // row); it now asks 547 against the receive pane's 464, so the
+    // shared floor costs the receive side 83 px rather than 624.
+    auto* row = new QWidget;
+    auto* layout = new QHBoxLayout(row);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(6);
+    QWidget* boxes[2] = {titled(first_, first_title_), titled(second_, second_title_)};
+    const int shared_floor =
+        std::max({PANE_MIN_W, boxes[0]->minimumSizeHint().width(),
+                  boxes[1]->minimumSizeHint().width()});
+    for (QWidget* pane : boxes) {
+        pane->setMinimumWidth(shared_floor);
+        layout->addWidget(pane, 1);
+    }
     // Undo the tab widget's work, if we are coming back from it. A
     // `QTabWidget` hides its background page with `hide()`, which marks
     // it *explicitly* hidden -- and unlike the implicit hide a reparent
@@ -101,7 +130,7 @@ QWidget* PaneContainer::build_split() {
     // (Harmless on the first build, where nothing is hidden yet.)
     first_->show();
     second_->show();
-    return splitter;
+    return row;
 }
 
 QWidget* PaneContainer::build_tabs() {
@@ -129,6 +158,50 @@ void PaneContainer::set_mode(PaneLayout mode) {
 
     mode_ = mode;
     emit modeChanged(mode_);
+}
+
+void PaneContainer::set_picture_areas(QWidget* first_picture, QWidget* second_picture) {
+    first_picture_ = first_picture;
+    second_picture_ = second_picture;
+    equalise();
+}
+
+void PaneContainer::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    equalise();
+}
+
+void PaneContainer::equalise() {
+    QWidget* a = first_picture_.data();
+    QWidget* b = second_picture_.data();
+    if (a == nullptr || b == nullptr) return;
+    // Only meaningful when both are on screen; in tabs one page is
+    // hidden and has no useful geometry, and there is nothing to match
+    // it against anyway -- a tab gets the whole window either way.
+    if (mode_ != PaneLayout::Split) {
+        a->setMaximumHeight(QWIDGETSIZE_MAX);
+        b->setMaximumHeight(QWIDGETSIZE_MAX);
+        return;
+    }
+    // Recomputed from scratch every time, in three steps: release both
+    // caps, let each pane lay out to the height it would naturally
+    // take, then cap both to the smaller. Releasing first is what stops
+    // this drifting -- carrying last pass's cap into this one would
+    // ratchet the pictures smaller on every resize and never let them
+    // grow back, which is the same failure as a fixed height wearing a
+    // different hat.
+    auto* la = dynamic_cast<HeightLimited*>(a);
+    auto* lb = dynamic_cast<HeightLimited*>(b);
+    if (la == nullptr || lb == nullptr) return;
+    la->set_height_limit(0);
+    lb->set_height_limit(0);
+    for (QWidget* pane : {first_, second_}) {
+        if (pane->layout() != nullptr) pane->layout()->activate();
+    }
+    const int room = std::min(a->height(), b->height());
+    if (room <= 0) return;
+    la->set_height_limit(room);
+    lb->set_height_limit(room);
 }
 
 void PaneContainer::set_first_note(const QString& note) {

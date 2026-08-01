@@ -115,13 +115,10 @@ void ReceivePanel::build_ui() {
     banner_ = new ErrorBanner(this);
     layout->addWidget(banner_);
 
-    auto* splitter = new QSplitter(Qt::Vertical, this);
-
-    waterfall_ = new Waterfall(splitter);
-
-    auto* lower = new QWidget(splitter);
-    auto* lower_layout = new QVBoxLayout(lower);
-    lower_layout->setContentsMargins(0, 0, 0, 0);
+    // One column now. The strip that used to sit above the picture in
+    // its own splitter belongs to the window.
+    auto* lower = this;
+    auto* lower_layout = layout;
 
     // No inner "Picture" box: the pane itself is titled, and a group
     // box between the layout and the label swallows the label's
@@ -158,23 +155,6 @@ void ReceivePanel::build_ui() {
     last_card_->setEnabled(false);  // reads as secondary until it has content
     lower_layout->addWidget(last_card_);
     lower_layout->addStretch(1);
-
-    splitter->addWidget(waterfall_);
-    splitter->addWidget(lower);
-    // Spare height goes to the **picture**, not the strip.
-    //
-    // This was the other way round while the picture was pinned at 4:3
-    // by a fixed height: it could not use extra pixels, so the strip
-    // got them. The picture now fits itself to the space it is given
-    // (see `PictureBox`), and a bigger received picture is worth more
-    // than more spectrum history -- especially in a tab, where this
-    // pane has the whole window.
-    splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 1);
-    // The strip still stops growing well before that: past a few
-    // hundred pixels the extra history stops earning its space.
-    waterfall_->setMaximumHeight(360);
-    layout->addWidget(splitter, 1);
 
     auto* controls = new QHBoxLayout();
     start_button_ = new QPushButton(tr("Start receiving"), this);
@@ -227,7 +207,7 @@ bool ReceivePanel::start() {
 
     const settings::Config& config = app_->config();
     ring_ = std::make_shared<rx::RingBuffer>(config.receive.buffer_seconds);
-    waterfall_->set_ring(ring_);
+    if (Waterfall* w = fall()) w->set_ring(ring_);
 
     try {
         stream_ = std::make_unique<audio::qt::InputStream>(
@@ -236,7 +216,7 @@ bool ReceivePanel::start() {
                 emit errorOccurred(QString::fromStdString(message));
             });
     } catch (const std::exception& e) {
-        waterfall_->set_ring(nullptr);
+        if (Waterfall* w = fall()) w->set_ring(nullptr);
         ring_.reset();
         app_->log_event("rx", log::Severity::Error,
                         tr("could not open the input device: %1")
@@ -315,7 +295,7 @@ void ReceivePanel::stop() {
     if (thread_.joinable()) thread_.join();
     running_.store(false);
 
-    if (waterfall_ != nullptr) waterfall_->set_ring(nullptr);
+    if (Waterfall* w = fall()) w->set_ring(nullptr);
     ring_.reset();
 
     if (start_button_ != nullptr) {
@@ -339,7 +319,7 @@ void ReceivePanel::suspend_for_transmit() {
     // without this it is the same picture as a wedged capture.
     set_status(tr("Paused -- transmitting"));
     preview_->setEnabled(false);
-    waterfall_->setEnabled(false);
+    if (Waterfall* w = fall()) w->setEnabled(false);
     // And the button that would undo half duplex. `stop()` re-enables
     // it on its way through, and this pane is now in front of the
     // operator for the whole over: clicking Start here would open
@@ -355,12 +335,12 @@ void ReceivePanel::resume_after_transmit() {
     if (!suspended_for_tx_) return;
     suspended_for_tx_ = false;
     preview_->setEnabled(true);
-    waterfall_->setEnabled(true);
+    if (Waterfall* w = fall()) w->setEnabled(true);
     start_button_->setEnabled(true);  // start() disables it again
     // start() allocates a fresh ring buffer, so the tail of our own
     // transmission is dropped rather than decoded back as a reception.
     start();
-    waterfall_->clear();
+    if (Waterfall* w = fall()) w->clear();
 }
 
 // --- the sink, on the decode thread -----------------------------------------
@@ -434,6 +414,8 @@ void ReceivePanel::save_audio_beside(const std::string& image_path) {
 }
 
 // --- the GUI thread ---------------------------------------------------------
+
+QWidget* ReceivePanel::picture_area() const { return preview_; }
 
 void ReceivePanel::set_status(const QString& text) {
     status_->setText(text);

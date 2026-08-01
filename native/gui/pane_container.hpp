@@ -29,6 +29,7 @@
 #ifndef SSTVAE_GUI_PANE_CONTAINER_HPP
 #define SSTVAE_GUI_PANE_CONTAINER_HPP
 
+#include <QPointer>
 #include <QString>
 #include <QWidget>
 
@@ -66,11 +67,21 @@ class PaneContainer : public QWidget {
     Q_OBJECT
 
 public:
+    // Lower bound on each pane's width when side by side. The actual
+    // floor is the larger of this and what either pane asks for -- both
+    // panes then share one minimum, which is what makes a 1:1 stretch
+    // produce genuinely equal widths. See `build_split`.
+    static constexpr int PANE_MIN_W = 380;
+
     // `first` and `second` are shown in that order, left to right or as
     // tabs. Ownership passes to this widget's current container, and
     // survives every mode switch -- see the class comment.
     PaneContainer(QWidget* first, QString first_title, QWidget* second,
                   QString second_title, QWidget* parent = nullptr);
+
+    // The two 4:3 picture areas, held to the same size. Optional: a
+    // test drives this class with plain widgets that have neither.
+    void set_picture_areas(QWidget* first_picture, QWidget* second_picture);
 
     PaneLayout mode() const { return mode_; }
     void set_mode(PaneLayout mode);
@@ -83,7 +94,22 @@ public:
 signals:
     void modeChanged(PaneLayout mode);
 
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
 private:
+    // **Hold both pictures to the same size.** Equal *panes* is not
+    // equal *pictures*: the two halves carry different controls below
+    // the picture, so the leftover height differs -- measured at
+    // 710x520 against 639x480 with the panes already exactly equal in
+    // width. Both boxes cap themselves at 4:3, so matching the height
+    // matches the whole rectangle.
+    //
+    // A maximum, never a fixed size: the same rule as everywhere else
+    // in this window. A fixed height here would put the taller pane's
+    // demand under the window and stop it shrinking again.
+    void equalise();
+
     QWidget* build_split();
     QWidget* build_tabs();
     // Make `container` the one on screen. The explicit `show()` inside
@@ -101,6 +127,8 @@ private:
 
     QWidget* first_ = nullptr;
     QWidget* second_ = nullptr;
+    QPointer<QWidget> first_picture_;
+    QPointer<QWidget> second_picture_;
     QString first_title_;
     QString second_title_;
     QString first_note_;

@@ -63,6 +63,9 @@ public:
     ~TransmitPanel() override;
 
     bool transmitting() const;
+    // The 4:3 canvas, so the container can hold it to the same size as
+    // the receive pane's picture. See `PaneContainer::equalise`.
+    QWidget* picture_area() const;
 
 public slots:
     void send();
@@ -127,7 +130,7 @@ private:
     void begin_transmit(const images::Picture& picture,
                         std::vector<double> latents);
     void rebuild_optimizer();
-    QWidget* build_side_panel();
+    QWidget* build_tool_row();
     QGroupBox* build_properties(QWidget* parent);
     QWidget* build_send_bar();
     void update_level_label();
