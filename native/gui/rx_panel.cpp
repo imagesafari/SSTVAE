@@ -19,6 +19,7 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
 #include <exception>
 #include <filesystem>
@@ -59,6 +60,52 @@ fs::path unique_path(fs::path path) {
         if (!fs::exists(candidate)) return candidate;
     }
     return path;
+}
+
+// A label that keeps the transmitted picture's 4:3 shape.
+//
+// Without this the preview took every spare pixel of the pane's height,
+// so the dark area was a tall portrait rectangle with a small 4:3
+// picture letterboxed somewhere inside it -- which reads as a broken
+// aspect ratio, because the *box* is the thing the eye measures. No
+// Q_OBJECT: these are plain virtual overrides, nothing for moc to do.
+class AspectLabel : public QLabel {
+public:
+    explicit AspectLabel(const QString& text, QWidget* parent)
+        : QLabel(text, parent) {
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
+
+protected:
+    // The aspect is pinned here, from the widget's *own* new width.
+    //
+    // Two earlier attempts got this wrong and both are worth recording.
+    // `heightForWidth` alone is only a *request*: a section shorter
+    // than the sum of what its children want shrinks the preview
+    // toward its minimum, and a 4:3 box came out 2.5:1. Doing it from
+    // the panel's resizeEvent instead reads `preview_->width()` before
+    // the layout has re-run, so it pins to the previous width -- which
+    // produced a 460x90 strip. Inside the label's own resizeEvent the
+    // width is authoritative, and the guard makes the relayout this
+    // triggers settle in one extra pass rather than recurse.
+    void resizeEvent(QResizeEvent* event) override {
+        QLabel::resizeEvent(event);
+        const int want = std::max(60, width() * images::IMG_H / images::IMG_W);
+        if (minimumHeight() != want) setFixedHeight(want);
+    }
+};
+
+// SNR for display, with a placeholder when there is none.
+//
+// `rx::fmt_snr` returns an empty string for NaN, which is right for it
+// -- it mirrors Python's and feeds the CLI. But on screen an absent
+// field is indistinguishable from a field that was never going to be
+// there: the operator cannot tell "no SNR estimate yet" from "this
+// build does not show SNR". The engine formats; the panel decides how
+// to show absence.
+QString snr_text(double snr_db) {
+    const QString formatted = QString::fromStdString(rx::fmt_snr(snr_db));
+    return formatted.isEmpty() ? QStringLiteral("  SNR --") : formatted;
 }
 
 }  // namespace
@@ -108,12 +155,13 @@ void ReceivePanel::build_ui() {
     auto* lower_layout = new QVBoxLayout(lower);
     lower_layout->setContentsMargins(0, 0, 0, 0);
 
-    auto* preview_box = new QGroupBox(tr("Picture"), lower);
-    auto* preview_layout = new QVBoxLayout(preview_box);
-    preview_ = new QLabel(tr("Nothing received yet"), preview_box);
+    // No inner "Picture" box: the pane itself is titled, and a group
+    // box between the layout and the label swallows the label's
+    // heightForWidth -- which is how the preview ended up 2.5:1 on a
+    // tall pane instead of the 4:3 it asks for.
+    preview_ = new AspectLabel(tr("Nothing received yet"), lower);
     preview_->setAlignment(Qt::AlignCenter);
-    preview_->setMinimumHeight(180);
-    preview_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    preview_->setMinimumHeight(120);
     // Palette, not a stylesheet: a stylesheet anywhere makes Qt wrap the
     // application style in QStyleSheetStyle, which resets padding to
     // zero across every combo and spin box in the app -- including the
@@ -123,8 +171,7 @@ void ReceivePanel::build_ui() {
     dark.setColor(QPalette::Window, QColor(0x20, 0x20, 0x24));
     dark.setColor(QPalette::WindowText, QColor(0x88, 0x88, 0x88));
     preview_->setPalette(dark);
-    preview_layout->addWidget(preview_);
-    lower_layout->addWidget(preview_box, 1);
+    lower_layout->addWidget(preview_);
 
     status_ = new QLabel(tr("Stopped"), lower);
     // A progress-tier surface must not set a width floor. Its longest
@@ -150,13 +197,21 @@ void ReceivePanel::build_ui() {
     last_card_->setWordWrap(true);
     last_card_->setEnabled(false);  // reads as secondary until it has content
     lower_layout->addWidget(last_card_);
+    lower_layout->addStretch(1);
 
     splitter->addWidget(waterfall_);
     splitter->addWidget(lower);
     // The picture takes the growth; the strip keeps roughly the height
     // its history needs.
+    // Spare height goes to the strip, not the picture: the picture is
+    // pinned at 4:3, and a taller waterfall is more history, which is
+    // the only thing in this pane that benefits from extra pixels.
     splitter->setStretchFactor(0, 1);
-    splitter->setStretchFactor(1, 3);
+    splitter->setStretchFactor(1, 0);
+    // A tall pane would otherwise turn the whole surplus into black
+    // spectrum. Past a few hundred pixels the extra history stops
+    // earning its space, and the picture is pinned so it cannot use it.
+    waterfall_->setMaximumHeight(360);
     layout->addWidget(splitter, 1);
 
     auto* controls = new QHBoxLayout();
@@ -457,12 +512,12 @@ void ReceivePanel::refresh_status() {
             text = tr("Receiving (blind sync): %1% of latents")
                        .arg(100.0 * progress.progress_frac, 0, 'f', 0);
         }
-        text += QString::fromStdString(rx::fmt_snr(progress.snr_db));
+        text += snr_text(progress.snr_db);
         if (!progress.callsign.empty()) {
             text += tr("  de %1").arg(QString::fromStdString(progress.callsign));
         }
     } else {
-        text = tr("Complete%1").arg(QString::fromStdString(rx::fmt_snr(progress.snr_db)));
+        text = tr("Complete%1").arg(snr_text(progress.snr_db));
         if (last_saved_path_) {
             text += tr(" -- saved %1")
                         .arg(QString::fromStdString(

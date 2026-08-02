@@ -22,8 +22,11 @@
 #include "overlay/model.hpp"
 #include "tx/engine.hpp"
 
+class QColor;
 class QComboBox;
 class QDoubleSpinBox;
+class QDragEnterEvent;
+class QDropEvent;
 class QGroupBox;
 class QLabel;
 class QPlainTextEdit;
@@ -94,6 +97,11 @@ signals:
     void errorOccurred(const QString& message);
     void sendFinished(bool ok);
 
+protected:
+    // A dropped picture file loads exactly as a chosen one does.
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
+
 private slots:
     void on_optimizer_progress();
     void on_state(int phase, double progress, const QString& message);
@@ -105,6 +113,11 @@ private slots:
 
 private:
     void build_ui();
+    // Paint the current text colour onto the Colour button.
+    void set_color_swatch(const QColor& color);
+    // True while the picture is committed to a send in progress.
+    bool picture_locked() const;
+    void set_picture_controls_enabled(bool on);
     // Push `framing_` through `images::fit` into the editor, and
     // relabel the picture honestly.
     void apply_framing();
@@ -142,6 +155,9 @@ private:
     QDoubleSpinBox* size_spin_ = nullptr;
     QDoubleSpinBox* rotation_spin_ = nullptr;
     QPushButton* color_button_ = nullptr;
+    // What the swatch currently shows, so a drag's per-mouse-move
+    // selectionChanged does not rebuild an identical icon.
+    QColor swatch_color_;
     // Set while the property widgets are being filled from an item, so
     // their change signals do not write straight back into it.
     bool loading_properties_ = false;

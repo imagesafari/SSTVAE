@@ -1,21 +1,30 @@
 #include "tx_panel.hpp"
 
+#include <QColor>
 #include <QColorDialog>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QMessageBox>
+#include <QMimeData>
+#include <QPainter>
+#include <QPixmap>
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSlider>
 #include <QSplitter>
+#include <QStyle>
 #include <QTimer>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -120,6 +129,7 @@ void TransmitPanel::rebuild_optimizer() {
         awaiting_optimizer_ = false;
         send_picture_.reset();
         send_button_->setEnabled(true);
+        set_picture_controls_enabled(true);
         progress_->setRange(0, 100);
         progress_->setValue(0);
     }
@@ -247,6 +257,11 @@ void TransmitPanel::on_optimizer_progress() {
 }
 
 void TransmitPanel::build_ui() {
+    // Dropping a file on the composer loads it -- the gesture every
+    // other picture application answers, and the one an operator
+    // reaches for before finding "Choose image...".
+    setAcceptDrops(true);
+
     auto* layout = new QVBoxLayout(this);
 
     // The error tier. Everything the transmit path says shares one
@@ -264,7 +279,15 @@ void TransmitPanel::build_ui() {
             &TransmitPanel::on_selection);
     connect(editor_, &OverlayEditor::documentChanged, this,
             &TransmitPanel::schedule_optimization);
-    splitter->addWidget(editor_);
+    // The editor sits in a container that can absorb the leftover
+    // height: it is pinned to the transmitted frame's 4:3, and a
+    // splitter would otherwise stretch it to fill.
+    auto* canvas_holder = new QWidget(splitter);
+    auto* canvas_layout = new QVBoxLayout(canvas_holder);
+    canvas_layout->setContentsMargins(0, 0, 0, 0);
+    canvas_layout->addWidget(editor_);
+    canvas_layout->addStretch(1);
+    splitter->addWidget(canvas_holder);
     splitter->addWidget(build_side_panel());
     splitter->setStretchFactor(0, 3);
     splitter->setStretchFactor(1, 1);
@@ -303,6 +326,11 @@ QWidget* TransmitPanel::build_side_panel() {
         editor_->add_text(callsign.empty() ? std::string("TEXT") : callsign);
     });
     add_rx_button_ = new QPushButton(tr("Add last received image"), overlay_box);
+    // Nothing to insert until something has been received: the item it
+    // adds resolves at render time, so before the first reception it
+    // drew nothing and looked like a button that did not work.
+    add_rx_button_->setEnabled(false);
+    add_rx_button_->setToolTip(tr("Available once a picture has been received"));
     connect(add_rx_button_, &QPushButton::clicked, editor_,
             &OverlayEditor::add_last_rx_inset);
     auto* add_image = new QPushButton(tr("Add image from file..."), overlay_box);
@@ -337,6 +365,11 @@ QGroupBox* TransmitPanel::build_properties(QWidget* parent) {
     // has to be what leaves the field.
     text_edit_ = new QPlainTextEdit(box);
     text_edit_->setTabChangesFocus(true);
+    // The panel advertises "drop a picture here"; this widget would
+    // answer that gesture by inserting the file's URL as overlay text
+    // and sending it on the air. Let the drop fall through to the
+    // panel, which loads it.
+    text_edit_->setAcceptDrops(false);
     text_edit_->setFixedHeight(80);
     connect(text_edit_, &QPlainTextEdit::textChanged, this, [this] {
         if (auto* item = editing_item()) {
@@ -400,6 +433,7 @@ QGroupBox* TransmitPanel::build_properties(QWidget* parent) {
             QColor(QString::fromStdString(text->color)), this);
         if (!color.isValid()) return;
         text->color = color.name().toStdString();
+        set_color_swatch(color);
         editor_->refresh_item();
     });
     form->addRow(tr("Colour"), color_button_);
@@ -438,11 +472,17 @@ QWidget* TransmitPanel::build_send_bar() {
     // extra length before anything starts clipping.
     level_slider_->setMinimumWidth(80);
     level_slider_->setMaximumWidth(140);
+    // The short form. The full procedure is in Settings > Transmit,
+    // where it can be read before the first send rather than only by
+    // someone who already suspects the level is wrong -- and the two
+    // must name the *same* target, because "barely moving ALC" and "no
+    // ALC action" are different drive levels and an operator following
+    // either should land in the same place.
     level_slider_->setToolTip(
         tr("Output level, dB relative to full scale.\n\n"
-           "Set it so the radio's ALC barely moves. The waveform is already "
-           "conditioned for a ~4 dB envelope peak; driving it into ALC "
-           "compression will spread it across the band."));
+           "Set it so the radio shows no ALC action at all -- ALC is a "
+           "compressor, and it flattens the peaks this waveform carries "
+           "information in. Full procedure in Settings > Transmit."));
     // Set before connecting, so restoring the saved value is not itself
     // treated as an edit worth writing back.
     level_slider_->setValue(static_cast<int>(
@@ -522,6 +562,7 @@ void TransmitPanel::choose_image() {
 }
 
 void TransmitPanel::load_image(const QString& path) {
+    if (picture_locked()) return;
     images::Picture loaded;
     try {
         loaded = images::load(path.toStdString());
@@ -573,7 +614,25 @@ void TransmitPanel::load_image(const QString& path) {
     app_->save_config();
 }
 
+bool TransmitPanel::picture_locked() const {
+    // Between the Send click and the end of the transmission the
+    // picture is committed, so changing it is refused rather than
+    // queued. The reason is sharper than tidiness: both entry points
+    // can open a *modal* dialog, whose nested event loop keeps pumping
+    // timers -- including `wait_timer_`, which starts the transmission.
+    // The radio would key while a framing dialog covered the Cancel
+    // button. The buttons are disabled to say so; this guard is what
+    // makes it true for a dropped file, which reaches no button.
+    return transmitting() || awaiting_optimizer_;
+}
+
+void TransmitPanel::set_picture_controls_enabled(bool on) {
+    choose_button_->setEnabled(on);
+    frame_button_->setEnabled(on && source_.has_value());
+}
+
 void TransmitPanel::choose_framing() {
+    if (picture_locked()) return;
     if (!source_) return;
     CropDialog dialog(*source_, framing_, this);
     // Cancel changes nothing, so nothing is re-applied -- re-fitting
@@ -627,8 +686,69 @@ void TransmitPanel::apply_framing() {
     // the first call had just started.
 }
 
+void TransmitPanel::dragEnterEvent(QDragEnterEvent* event) {
+    // Accept only a single local file. Multiple would be ambiguous --
+    // one picture goes out at a time -- and a remote URL would mean
+    // fetching, which this panel has no business doing.
+    const QMimeData* mime = event->mimeData();
+    if (!mime->hasUrls()) return;
+    const QList<QUrl> urls = mime->urls();
+    if (urls.size() != 1 || !urls.front().isLocalFile()) return;
+    event->acceptProposedAction();
+}
+
+void TransmitPanel::dropEvent(QDropEvent* event) {
+    const QList<QUrl> urls = event->mimeData()->urls();
+    if (urls.size() != 1 || !urls.front().isLocalFile()) return;
+    event->acceptProposedAction();
+
+    // Deferred, not called here. `load_image` can open the framing
+    // dialog or a message box, and a nested event loop inside
+    // `dropEvent` means this handler has not returned -- so the
+    // platform's drop handshake is unfinished and the *source*
+    // application stays blocked for as long as the operator spends
+    // choosing a crop. Returning first and loading on the next tick
+    // costs nothing and ends the drag properly.
+    const QString path = urls.front().toLocalFile();
+    QTimer::singleShot(0, this, [this, path] { load_image(path); });
+}
+
 void TransmitPanel::set_last_rx_image(const images::Picture& image) {
     editor_->set_last_rx(image);
+    // Only now is there anything for the button to insert. Before the
+    // first reception it added an item that rendered as nothing, which
+    // reads as a broken button rather than as "not yet".
+    add_rx_button_->setEnabled(true);
+    add_rx_button_->setToolTip(QString());
+}
+
+void TransmitPanel::set_color_swatch(const QColor& color) {
+    // The button said "Colour..." and nothing else, so the current
+    // colour was invisible -- the one thing a colour control has to
+    // show. A filled square on the button, drawn at the icon size the
+    // style asks for so it matches the platform's other buttons.
+    // Dragging a text item emits selectionChanged on every mouse move,
+    // so without this guard the whole rebuild -- parse, allocate, paint,
+    // setIcon, and the layout invalidation setIcon triggers -- runs at
+    // mouse-move rate on the app's most latency-sensitive path.
+    if (color == swatch_color_) return;
+    swatch_color_ = color;
+
+    const int size = style()->pixelMetric(QStyle::PM_SmallIconSize);
+    // Device pixels, like the waterfall's backing image: a logical-sized
+    // pixmap is upscaled on a HiDPI screen, giving a soft square with a
+    // half-resolution border.
+    const qreal dpr = devicePixelRatioF();
+    QPixmap swatch(static_cast<int>(std::lround(size * dpr)),
+                   static_cast<int>(std::lround(size * dpr)));
+    swatch.setDevicePixelRatio(dpr);
+    swatch.fill(color.isValid() ? color : Qt::transparent);
+    if (color.isValid()) {
+        QPainter painter(&swatch);
+        painter.setPen(palette().color(QPalette::WindowText));
+        painter.drawRect(0, 0, size - 1, size - 1);
+    }
+    color_button_->setIcon(QIcon(swatch));
 }
 
 // --- property editing -------------------------------------------------------
@@ -642,7 +762,12 @@ overlay::Item* TransmitPanel::editing_item() {
 
 void TransmitPanel::on_selection(overlay::Item* item) {
     properties_->setEnabled(item != nullptr);
-    if (item == nullptr) return;
+    if (item == nullptr) {
+        // Otherwise the last item's colour stays painted on a disabled
+        // button, describing a selection that no longer exists.
+        set_color_swatch(QColor());
+        return;
+    }
 
     const bool is_text = std::holds_alternative<overlay::TextItem>(*item);
     loading_properties_ = true;
@@ -655,9 +780,11 @@ void TransmitPanel::on_selection(overlay::Item* item) {
         align_combo_->setCurrentIndex(std::max(
             0, align_combo_->findData(QString::fromStdString(text.align))));
         size_spin_->setValue(text.size);
+        set_color_swatch(QColor(QString::fromStdString(text.color)));
     } else {
         text_edit_->setPlainText(QString());
         size_spin_->setValue(std::get<overlay::ImageItem>(*item).width);
+        set_color_swatch(QColor());  // no colour on an image item
     }
     rotation_spin_->setValue(std::visit([](const auto& i) { return i.rotation; },
                                         *item));
@@ -700,6 +827,7 @@ void TransmitPanel::send() {
             send_picture_ = *image;
             awaiting_optimizer_ = true;
             send_button_->setEnabled(false);
+            set_picture_controls_enabled(false);
             status_->setText(tr("Refining picture..."));
             progress_->setRange(0, 0);
             wait_timer_->start();
@@ -750,6 +878,7 @@ void TransmitPanel::begin_transmit(const images::Picture& picture,
         });
 
     send_button_->setEnabled(false);
+    set_picture_controls_enabled(false);
     cancel_button_->setEnabled(true);
     // The level is captured in tx_config above, so moving the slider now
     // would change the reading without changing the transmission.
@@ -847,6 +976,7 @@ void TransmitPanel::on_finished(bool ok) {
         schedule_optimization();
     }
     send_button_->setEnabled(true);
+    set_picture_controls_enabled(true);
     cancel_button_->setEnabled(false);
     level_slider_->setEnabled(true);
     progress_->setRange(0, 100);

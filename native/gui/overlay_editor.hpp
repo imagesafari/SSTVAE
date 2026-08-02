@@ -39,6 +39,13 @@ public:
     ~OverlayEditor() override;
 
     QSize sizeHint() const override;
+    // The composer *is* the transmitted frame, so the widget is that
+    // shape rather than letterboxing a 4:3 canvas inside whatever
+    // rectangle it was handed and leaving a dead field around it.
+    // Pinned in resizeEvent rather than through heightForWidth, which a
+    // QSplitter ignores -- it sizes its children to fill.
+    bool hasHeightForWidth() const override { return true; }
+    int heightForWidth(int w) const override;
 
     // The picture the overlay sits on, already framed to the transmit
     // size by the caller.
@@ -87,6 +94,14 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    // Delete removes the selection; the arrows nudge it. Nudging is
+    // what a mouse cannot do: items are placed in normalized
+    // coordinates, so the smallest useful drag is one widget pixel,
+    // which is a different distance on every window size. A key press
+    // is a fixed fraction of the canvas, so two callsigns can actually
+    // be lined up.
+    void keyPressEvent(QKeyEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     enum class Drag { None, Move, Resize };

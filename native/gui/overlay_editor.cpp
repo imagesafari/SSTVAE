@@ -1,13 +1,16 @@
 #include "overlay_editor.hpp"
 
 #include <QImage>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPen>
+#include <QResizeEvent>
 
 #include <algorithm>
 #include <cmath>
 #include <utility>
+#include <variant>
 
 #include "images/images.hpp"
 #include "overlay/render.hpp"
@@ -29,14 +32,24 @@ QImage to_qimage(const images::Picture& picture) {
 
 OverlayEditor::OverlayEditor(QWidget* parent) : QWidget(parent) {
     setMinimumSize(320, 240);
+    QSizePolicy policy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    policy.setHeightForWidth(true);
+    setSizePolicy(policy);
     setMouseTracking(false);
-    setFocusPolicy(Qt::ClickFocus);
+    // Strong, not ClickFocus: the arrow keys and Delete are useless to
+    // an operator who cannot get focus onto this widget, and ClickFocus
+    // keeps it out of the Tab chain entirely.
+    setFocusPolicy(Qt::StrongFocus);
 }
 
 OverlayEditor::~OverlayEditor() = default;
 
 QSize OverlayEditor::sizeHint() const {
     return QSize(overlay::CANVAS_W, overlay::CANVAS_H);
+}
+
+int OverlayEditor::heightForWidth(int w) const {
+    return w * overlay::CANVAS_H / overlay::CANVAS_W;
 }
 
 void OverlayEditor::set_base_image(const images::Picture& image) {
@@ -60,6 +73,10 @@ void OverlayEditor::add_text(const std::string& text) {
     item.text = text;
     doc_.items.push_back(item);
     select(static_cast<int>(doc_.items.size()) - 1);
+    // The button that ran this has the focus, so the keyboard would
+    // otherwise be dead on exactly the flow the nudge exists for --
+    // add a callsign, then line it up against another.
+    setFocus(Qt::OtherFocusReason);
     emit documentChanged();
 }
 
@@ -68,6 +85,10 @@ void OverlayEditor::add_image_inset(const std::string& path) {
     item.source = path;
     doc_.items.push_back(item);
     select(static_cast<int>(doc_.items.size()) - 1);
+    // The button that ran this has the focus, so the keyboard would
+    // otherwise be dead on exactly the flow the nudge exists for --
+    // add a callsign, then line it up against another.
+    setFocus(Qt::OtherFocusReason);
     emit documentChanged();
 }
 
@@ -75,6 +96,10 @@ void OverlayEditor::add_last_rx_inset() {
     overlay::ImageItem item;  // defaults to SOURCE_LAST_RX
     doc_.items.push_back(item);
     select(static_cast<int>(doc_.items.size()) - 1);
+    // The button that ran this has the focus, so the keyboard would
+    // otherwise be dead on exactly the flow the nudge exists for --
+    // add a callsign, then line it up against another.
+    setFocus(Qt::OtherFocusReason);
     emit documentChanged();
 }
 
@@ -299,6 +324,60 @@ void OverlayEditor::mouseMoveEvent(QMouseEvent* event) {
 void OverlayEditor::mouseReleaseEvent(QMouseEvent* event) {
     Q_UNUSED(event);
     drag_ = Drag::None;
+}
+
+void OverlayEditor::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    // From the widget's own new width, where it is authoritative.
+    const int want =
+        std::max(120, width() * overlay::CANVAS_H / overlay::CANVAS_W);
+    if (minimumHeight() != want) setFixedHeight(want);
+}
+
+void OverlayEditor::keyPressEvent(QKeyEvent* event) {
+    overlay::Item* item = selected_item();
+    if (item == nullptr) {
+        QWidget::keyPressEvent(event);
+        return;
+    }
+
+    if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) {
+        remove_selected();
+        event->accept();
+        return;
+    }
+
+    // A fraction of the canvas, not a pixel: positions are normalized,
+    // so a fixed step means the same nudge whatever the window size.
+    // Shift is the coarse step, for getting somewhere; the fine one is
+    // roughly a canvas pixel at 640 wide.
+    constexpr double FINE = 1.0 / 640.0;
+    constexpr double COARSE = 1.0 / 64.0;
+    const double step =
+        (event->modifiers() & Qt::ShiftModifier) ? COARSE : FINE;
+
+    double dx = 0.0;
+    double dy = 0.0;
+    switch (event->key()) {
+        case Qt::Key_Left: dx = -step; break;
+        case Qt::Key_Right: dx = step; break;
+        case Qt::Key_Up: dy = -step; break;
+        case Qt::Key_Down: dy = step; break;
+        default:
+            QWidget::keyPressEvent(event);
+            return;
+    }
+
+    // The same clamp a drag uses, so an item cannot be nudged somewhere
+    // a drag could not have put it.
+    std::visit(
+        [dx, dy](auto& i) {
+            i.x = std::clamp(i.x + dx, -0.5, 1.5);
+            i.y = std::clamp(i.y + dy, -0.5, 1.5);
+        },
+        *item);
+    refresh_item();
+    event->accept();
 }
 
 }  // namespace sstvae::gui

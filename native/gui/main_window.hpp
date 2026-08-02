@@ -57,6 +57,9 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
+    // Wrap a panel in a titled box, so which half is which is read
+    // rather than inferred from a button caption.
+    QWidget* build_pane(const QString& title, QWidget* content);
     void build_menu();
     void build_status_bar();
     void build_log_dock();
@@ -65,6 +68,7 @@ private:
     void on_rig_status(const QString& text, bool error);
     void on_model_progress(qlonglong received, qlonglong total);
     void on_tx_state(int phase);
+    void show_about();
     void refresh_rig_error_age();
 
     AppState* state_ = nullptr;

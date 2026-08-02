@@ -9,12 +9,15 @@
 // like a working editor until an item will not go where you put it.
 
 #include <QApplication>
+#include <QKeyEvent>
 #include <QMouseEvent>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <variant>
 
 #include "check.hpp"
 #include "images/types.hpp"
@@ -68,6 +71,12 @@ void move_to(gui::OverlayEditor& editor, QPoint at) {
 void release(gui::OverlayEditor& editor, QPoint at) {
     QMouseEvent event(QEvent::MouseButtonRelease, QPointF(at), QPointF(at),
                       Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&editor, &event);
+}
+
+void key(gui::OverlayEditor& editor, int code,
+         Qt::KeyboardModifiers mods = Qt::NoModifier) {
+    QKeyEvent event(QEvent::KeyPress, code, mods);
     QApplication::sendEvent(&editor, &event);
 }
 
@@ -219,6 +228,74 @@ void test_the_composite_is_the_renderer_s_output() {
 
 }  // namespace
 
+
+void test_arrows_nudge_by_a_fixed_fraction() {
+    // The nudge exists because a mouse cannot do it: positions are
+    // normalized, so the smallest drag is one widget pixel -- a
+    // different distance at every window size. A key step has to be a
+    // fixed fraction of the canvas, and it has to move the axis it
+    // names in the direction it names.
+    std::unique_ptr<gui::OverlayEditor> editor(make_editor());
+    editor->add_text("N0CALL");
+    overlay::Item* item = editor->selected_item();
+    check::is_true(item != nullptr, "nudge: an added item is selected");
+
+    const double x0 = std::visit([](const auto& i) { return i.x; }, *item);
+    const double y0 = std::visit([](const auto& i) { return i.y; }, *item);
+
+    constexpr double FINE = 1.0 / 640.0;
+    const auto ix = [&] { return std::visit([](const auto& i) { return i.x; }, *item); };
+    const auto iy = [&] { return std::visit([](const auto& i) { return i.y; }, *item); };
+
+    key(*editor, Qt::Key_Right);
+    check::is_true(std::abs(ix() - (x0 + FINE)) <= 1e-9,
+                   "nudge: right moves +x by one fine step");
+    check::is_true(std::abs(iy() - y0) <= 1e-9, "nudge: right leaves y alone");
+
+    key(*editor, Qt::Key_Left);
+    check::is_true(std::abs(ix() - x0) <= 1e-9, "nudge: left comes back");
+
+    key(*editor, Qt::Key_Down);
+    check::is_true(std::abs(iy() - (y0 + FINE)) <= 1e-9, "nudge: down moves +y");
+    key(*editor, Qt::Key_Up);
+    check::is_true(std::abs(iy() - y0) <= 1e-9, "nudge: up comes back");
+
+    // Shift is the coarse step, and it is bigger -- not merely
+    // different, which an inequality assertion would also accept.
+    constexpr double COARSE = 1.0 / 64.0;
+    key(*editor, Qt::Key_Right, Qt::ShiftModifier);
+    check::is_true(std::abs(ix() - (x0 + COARSE)) <= 1e-9,
+                   "nudge: shift takes the coarse step");
+}
+
+void test_delete_removes_the_selection() {
+    std::unique_ptr<gui::OverlayEditor> editor(make_editor());
+    editor->add_text("N0CALL");
+    check::equal(static_cast<int>(editor->doc().items.size()), 1,
+                 "delete: one item to begin with");
+    key(*editor, Qt::Key_Delete);
+    check::equal(static_cast<int>(editor->doc().items.size()), 0,
+                 "delete: the key removes it");
+    check::is_true(editor->selected_item() == nullptr,
+                   "delete: and clears the selection");
+
+    // With nothing selected the key must fall through rather than be
+    // swallowed, or a shortcut elsewhere in the window stops working.
+    key(*editor, Qt::Key_Delete);
+    check::equal(static_cast<int>(editor->doc().items.size()), 0,
+                 "delete: harmless with an empty document");
+}
+
+void test_an_added_item_can_be_nudged_without_clicking_first() {
+    // The flow the feature is for: Add text, then line it up. The
+    // button that added it has the focus, so unless the editor takes
+    // focus the keys are dead exactly here.
+    std::unique_ptr<gui::OverlayEditor> editor(make_editor());
+    editor->add_text("N0CALL");
+    check::is_true(editor->hasFocus() || editor->focusPolicy() != Qt::ClickFocus,
+                   "nudge: the editor is reachable by keyboard after an add");
+}
+
 int main(int argc, char** argv) {
     check::report_crashes_instead_of_prompting();
     qputenv("QT_QPA_PLATFORM", "offscreen");
@@ -231,6 +308,9 @@ int main(int argc, char** argv) {
     test_normalized_coordinates_survive_a_resize();
     test_removing_clears_the_selection();
     test_the_composite_is_the_renderer_s_output();
+    test_arrows_nudge_by_a_fixed_fraction();
+    test_delete_removes_the_selection();
+    test_an_added_item_can_be_nudged_without_clicking_first();
 
     return check::report("overlay editor");
 }
