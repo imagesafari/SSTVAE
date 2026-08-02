@@ -46,3 +46,8 @@ dist/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# Agent worktrees. Contained in the repo so a `git worktree list` finds
+# them, but never content to commit -- a `git add -A` on the main checkout
+# would otherwise pull four whole checkouts in.
+.claude/worktrees/
