@@ -24,6 +24,7 @@
 #include "app_state.hpp"
 #include "audio/qt/qtaudio.hpp"
 #include "audio/wavio.hpp"
+#include "banner.hpp"
 #include "codec/codec.hpp"
 #include "images/images.hpp"
 #include "settings/settings.hpp"
@@ -83,6 +84,13 @@ void ReceivePanel::build_ui() {
     // most people have, stacking the waterfall on top would leave the
     // sides empty and squeeze the thing you actually want to look at.
     auto* layout = new QVBoxLayout(this);
+
+    // The error tier: sticky, dismissable, and never overwritten by the
+    // 500 ms status refresh below -- which is exactly what happened to
+    // every receive error before (visible for at most half a second).
+    banner_ = new ErrorBanner(this);
+    layout->addWidget(banner_);
+
     auto* splitter = new QSplitter(Qt::Horizontal, this);
 
     auto* left = new QWidget(splitter);
@@ -177,6 +185,9 @@ bool ReceivePanel::start() {
     } catch (const std::exception& e) {
         waterfall_->set_ring(nullptr);
         ring_.reset();
+        app_->log_event("rx", log::Severity::Error,
+                        tr("could not open the input device: %1")
+                            .arg(QString::fromUtf8(e.what())));
         QMessageBox::critical(
             this, tr("Could not open the input device"),
             tr("%1\n\nCheck the input device in Settings.")
@@ -228,11 +239,22 @@ bool ReceivePanel::start() {
     start_button_->setEnabled(false);
     stop_button_->setEnabled(true);
     status_->setText(tr("Listening at %1 Hz").arg(device_rate));
+    // A clean restart of the activity clears its error banner; the log
+    // keeps the history.
+    banner_->clear();
+    was_receiving_ = false;
+    app_->log_event("rx", log::Severity::Info,
+                    tr("listening (device at %1 Hz)").arg(device_rate));
     emit listeningChanged(true);
     return true;
 }
 
 void ReceivePanel::stop() {
+    // Idempotence matters here: closeEvent stops the panel and the
+    // destructor stops it again, and only the transition from "was
+    // actually listening" deserves a log line.
+    const bool was_listening = thread_.joinable();
+
     stop_flag_.set();
     // The stream first: it is what feeds the loop, and stopping it means
     // the loop's next poll sees no new audio rather than racing us.
@@ -248,7 +270,10 @@ void ReceivePanel::stop() {
         stop_button_->setEnabled(false);
         status_->setText(tr("Stopped"));
     }
-    emit listeningChanged(false);
+    if (was_listening) {
+        app_->log_event("rx", log::Severity::Info, tr("stopped"));
+        emit listeningChanged(false);
+    }
 }
 
 void ReceivePanel::suspend_for_transmit() {
@@ -343,6 +368,25 @@ void ReceivePanel::refresh_status() {
     if (!listening()) return;
     const rx::Progress progress = shared_->get();
 
+    // The engine has no "sync acquired" event -- acquisition is just the
+    // first poll whose status reads "receiving" -- so the edge is
+    // detected and logged here (once per acquisition).
+    if (progress.status == rx::Status::Receiving && !was_receiving_) {
+        was_receiving_ = true;
+        QString acquired = tr("sync acquired");
+        if (progress.mode_name) {
+            acquired += tr(": mode %1").arg(QString::fromStdString(*progress.mode_name));
+        } else {
+            acquired += tr(" (blind)");
+        }
+        if (!progress.callsign.empty()) {
+            acquired += tr(" de %1").arg(QString::fromStdString(progress.callsign));
+        }
+        app_->log_event("rx", log::Severity::Info, acquired);
+    } else if (progress.status == rx::Status::Listening) {
+        was_receiving_ = false;
+    }
+
     QString text;
     if (progress.status == rx::Status::Listening) {
         text = tr("Listening... (%1s captured)")
@@ -394,11 +438,39 @@ void ReceivePanel::on_reception(const QString& saved_path) {
         saved_path.isEmpty() ? std::nullopt
                              : std::optional<std::string>(saved_path.toStdString());
     set_displayed(reception->image, reception->callsign, reception->mode_name);
+
+    // The one durable record of a completed reception: mode, callsign,
+    // SNR, frame count and the *full* saved path -- which was previously
+    // shown only in a 5-second status bar flash before this line existed.
+    QString line = tr("reception complete");
+    if (reception->mode_name) {
+        line += tr(": mode %1").arg(QString::fromStdString(*reception->mode_name));
+    }
+    if (!reception->callsign.empty()) {
+        line += tr(" de %1").arg(QString::fromStdString(reception->callsign));
+    }
+    if (reception->n_frames_expected) {
+        line += tr(", %1/%2 frames")
+                    .arg(reception->frames_received.value_or(0))
+                    .arg(*reception->n_frames_expected);
+    }
+    const QString snr = QString::fromStdString(rx::fmt_snr(reception->snr_db));
+    if (!snr.isEmpty()) line += tr(",%1").arg(snr);
+    if (!saved_path.isEmpty()) line += tr(" -- saved %1").arg(saved_path);
+    app_->log_event("rx", log::Severity::Info, line);
+
     emit imageReceived(reception->image);
     if (!saved_path.isEmpty()) emit receptionSaved(saved_path);
 }
 
-void ReceivePanel::on_error(const QString& message) { status_->setText(message); }
+void ReceivePanel::on_error(const QString& message) {
+    // Sticky (the banner) plus durable (the log). Deliberately not the
+    // status label: that is the progress tier, the next 500 ms refresh
+    // would overwrite it anyway, and a single-line label given a long
+    // error inflates the panel's minimum width.
+    banner_->show_error(message);
+    app_->log_event("rx", log::Severity::Error, message);
+}
 
 void ReceivePanel::on_autosave_toggled(bool on) {
     app_->config().receive.autosave = on;
@@ -449,6 +521,9 @@ void ReceivePanel::save_current() {
     try {
         images::save_png(*displayed_, path.toStdString());
     } catch (const std::exception& e) {
+        app_->log_event("rx", log::Severity::Error,
+                        tr("could not save %1: %2")
+                            .arg(path, QString::fromUtf8(e.what())));
         QMessageBox::critical(this, tr("Could not save"),
                               QString::fromUtf8(e.what()));
         return;

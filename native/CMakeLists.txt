@@ -90,6 +90,7 @@ add_library(sstvae_core STATIC
   core/images/images.cpp
   core/modem/modem.cpp
   core/latents/latents.cpp
+  core/log/log.cpp
   core/util/event.cpp
   core/rx/ringbuffer.cpp
   core/rig/controller.cpp
@@ -334,6 +335,8 @@ if(_want_gui)
     gui/settings_dialog.cpp
     gui/overlay_editor.cpp
     gui/tx_panel.cpp
+    gui/banner.cpp
+    gui/log_pane.cpp
     gui/app_state.cpp)
   set_target_properties(sstvae_gui PROPERTIES AUTOMOC ON)
   target_include_directories(sstvae_gui PUBLIC core gui)

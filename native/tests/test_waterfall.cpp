@@ -10,6 +10,7 @@
 
 #include <QApplication>
 #include <QImage>
+#include <QMouseEvent>
 
 #include <algorithm>
 #include <cmath>
@@ -178,6 +179,38 @@ void test_a_resize_keeps_the_history() {
                  "waterfall/resize: and the image follows the widget");
 }
 
+void test_clipping_latches_until_cleared() {
+    gui::Waterfall widget;
+    widget.resize(W, H);
+
+    // A full-scale tone: peak >= 0.99, which is the clip threshold.
+    auto loud = std::make_shared<rx::RingBuffer>(2.0);
+    std::vector<double> block(dsp::WATERFALL_NFFT * 2);
+    for (std::size_t i = 0; i < block.size(); ++i) {
+        block[i] = std::sin(2.0 * std::numbers::pi * TONE_HZ *
+                            static_cast<double>(i) / config::FS);
+    }
+    loud->write(block);
+    widget.set_ring(loud);
+    QMetaObject::invokeMethod(&widget, "tick", Qt::DirectConnection);
+    check::is_true(widget.clip_latched(), "waterfall/clip: a clip latches");
+
+    // The signal drops back to a healthy level; the latch must hold --
+    // a momentary indicator is exactly what this replaces.
+    widget.set_ring(ring_with_tone(TONE_HZ));
+    QMetaObject::invokeMethod(&widget, "tick", Qt::DirectConnection);
+    check::is_true(widget.clip_latched(),
+                   "waterfall/clip: still latched after the peak passes");
+
+    // A click on the meter clears it.
+    QMouseEvent click(QEvent::MouseButtonPress, QPointF(W - 5, 10),
+                      widget.mapToGlobal(QPointF(W - 5, 10)), Qt::LeftButton,
+                      Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &click);
+    check::is_true(!widget.clip_latched(),
+                   "waterfall/clip: a click on the meter clears the latch");
+}
+
 void test_clear_blanks_it() {
     gui::Waterfall widget;
     widget.resize(W, H);
@@ -203,6 +236,7 @@ int main(int argc, char** argv) {
     test_a_tone_paints_where_its_frequency_says();
     test_history_scrolls_downward();
     test_a_resize_keeps_the_history();
+    test_clipping_latches_until_cleared();
     test_clear_blanks_it();
 
     return check::report("waterfall widget");

@@ -2,6 +2,8 @@
 
 #include <QAction>
 #include <QCloseEvent>
+#include <QDateTime>
+#include <QDockWidget>
 #include <QKeySequence>
 #include <QLabel>
 #include <QMenu>
@@ -9,12 +11,15 @@
 #include <QMessageBox>
 #include <QStatusBar>
 #include <QTabWidget>
+#include <QTimer>
 #include <QWidget>
 
 #include "app_state.hpp"
+#include "log_pane.hpp"
 #include "rx_panel.hpp"
 #include "tx_panel.hpp"
 #include "settings_dialog.hpp"
+#include "tx/engine.hpp"
 
 namespace sstvae::gui {
 
@@ -54,9 +59,22 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     build_menu();
     build_status_bar();
+    build_log_dock();
 
     connect(state_, &AppState::modelLoaded, this, &MainWindow::on_model_loaded);
-    connect(state_, &AppState::rigStatus, rig_label_, &QLabel::setText);
+    connect(state_, &AppState::rigStatus, this, &MainWindow::on_rig_status);
+    connect(state_, &AppState::modelProgress, this,
+            &MainWindow::on_model_progress);
+    // The PTT lamp follows the transmit phase; the rig chip greys while
+    // polling is paused so a frozen frequency does not read as current.
+    connect(tx_panel_, &TransmitPanel::stateChanged, this,
+            [this](int phase, double, const QString&) { on_tx_state(phase); });
+    connect(tx_panel_, &TransmitPanel::sendFinished, this,
+            [this](bool) { on_tx_state(static_cast<int>(tx::TxPhase::Idle)); });
+    connect(tx_panel_, &TransmitPanel::transmitStarted, this,
+            [this] { rig_label_->setEnabled(false); });
+    connect(tx_panel_, &TransmitPanel::transmitFinished, this,
+            [this] { rig_label_->setEnabled(true); });
     connect(rx_panel_, &ReceivePanel::receptionSaved, this,
             [this](const QString& path) {
                 statusBar()->showMessage(tr("Saved %1").arg(path), 5000);
@@ -67,7 +85,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     update_station_label();
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+    // Destruction order is load-bearing. `state_` is this window's
+    // first child and the panels live inside the central widget, its
+    // second -- so QObject's forward-order child deletion would destroy
+    // AppState *before* the panels, whose teardown still uses it
+    // (~ReceivePanel calls stop(); ~TransmitPanel joins the transmit
+    // and optimizer workers, which may be mid-fetch through the
+    // AppState-captured progress hook). Deleting the central widget by
+    // hand first means every panel -- and every worker thread they own
+    // -- is gone while AppState is still alive.
+    delete takeCentralWidget();
+}
 
 void MainWindow::build_menu() {
     // The explicit NoRole calls are load-bearing on macOS. Qt's Cocoa
@@ -93,17 +122,77 @@ void MainWindow::build_menu() {
     quit_action->setMenuRole(QAction::NoRole);
     quit_action->setShortcut(QKeySequence::Quit);
     connect(quit_action, &QAction::triggered, this, &MainWindow::close);
+
+    // View > Status log: the dock's own toggle action, so the menu
+    // entry and the dock's close button cannot disagree about state.
+    // The action is added in build_log_dock(), which runs after this;
+    // the menu pointer is kept on the window via findChild-free means.
+    view_menu_ = menuBar()->addMenu(tr("&View"));
 }
 
 void MainWindow::build_status_bar() {
     auto* bar = new QStatusBar(this);
     setStatusBar(bar);
+    // The PTT lamp: hidden except while the rig is keyed. Bold red
+    // text on the standard background -- a state indicator, not chrome
+    // -- because "the radio is transmitting" is the one state in the
+    // app that must be visible at a glance.
+    ptt_label_ = new QLabel(tr("TX"), this);
+    QFont ptt_font = ptt_label_->font();
+    ptt_font.setBold(true);
+    ptt_label_->setFont(ptt_font);
+    QPalette ptt_palette = ptt_label_->palette();
+    ptt_palette.setColor(QPalette::WindowText, QColor(0xb3, 0x26, 0x1e));
+    ptt_label_->setPalette(ptt_palette);
+    ptt_label_->hide();
+
     station_label_ = new QLabel(QString(), this);
     rig_label_ = new QLabel(tr("Rig control off"), this);
     model_label_ = new QLabel(tr("Loading model..."), this);
-    for (QLabel* label : {station_label_, rig_label_, model_label_}) {
+    for (QLabel* label : {ptt_label_, station_label_, rig_label_, model_label_}) {
         bar->addPermanentWidget(label);
     }
+
+    rig_error_timer_ = new QTimer(this);
+    rig_error_timer_->setInterval(5000);
+    connect(rig_error_timer_, &QTimer::timeout, this,
+            &MainWindow::refresh_rig_error_age);
+}
+
+void MainWindow::build_log_dock() {
+    log_pane_ = new LogPane(&state_->status_log(), this);
+    log_pane_->set_file_note(state_->log_file_note());
+    connect(state_, &AppState::logEntry, log_pane_, &LogPane::append);
+
+    log_dock_ = new QDockWidget(tr("Status log"), this);
+    // Closable so it can be put away; not floatable or movable -- it is
+    // a log strip, not a tool window, and the bottom is its place.
+    log_dock_->setFeatures(QDockWidget::DockWidgetClosable);
+    log_dock_->setAllowedAreas(Qt::BottomDockWidgetArea);
+    log_dock_->setWidget(log_pane_);
+    addDockWidget(Qt::BottomDockWidgetArea, log_dock_);
+    view_menu_->addAction(log_dock_->toggleViewAction());
+
+    // An error re-opens a closed dock: the log is where the detail
+    // lives, and an error with the log hidden would be exactly the
+    // silent failure this pane exists to end.
+    connect(state_, &AppState::logEntry, this,
+            [this](qlonglong, const QString&, int severity, const QString&) {
+                if (severity == static_cast<int>(log::Severity::Error)) {
+                    log_dock_->show();
+                }
+            });
+
+    // Queued is mandatory, not a preference: the signal is emitted
+    // under the StatusLog lock, and this slot appends to that same log.
+    connect(
+        state_, &AppState::fileLogFailed, this,
+        [this](const QString& what) {
+            log_pane_->set_file_note(tr("(log file unavailable: %1)").arg(what));
+            state_->log_event("app", log::Severity::Error,
+                              tr("file log failed: %1").arg(what));
+        },
+        Qt::QueuedConnection);
 }
 
 void MainWindow::update_station_label() {
@@ -131,8 +220,72 @@ void MainWindow::on_model_loaded() {
     tx_panel_->sync_from_config();
 }
 
+void MainWindow::on_rig_status(const QString& text, bool error) {
+    if (error) {
+        rig_error_text_ = text;
+        rig_error_since_ms_ = QDateTime::currentMSecsSinceEpoch();
+        rig_label_->setText(text);
+        rig_error_timer_->start();
+    } else {
+        rig_error_text_.clear();
+        rig_error_timer_->stop();
+        rig_label_->setText(text);
+    }
+}
+
+void MainWindow::refresh_rig_error_age() {
+    if (rig_error_text_.isEmpty()) return;
+    const qint64 seconds =
+        (QDateTime::currentMSecsSinceEpoch() - rig_error_since_ms_) / 1000;
+    // The controller deduplicates identical failures and backs its poll
+    // off to a minute, so without this a stale error is indistinguishable
+    // from a fresh one.
+    rig_label_->setText(tr("%1 (%2 s ago)").arg(rig_error_text_).arg(seconds));
+}
+
+void MainWindow::on_model_progress(qlonglong received, qlonglong total) {
+    // The hook is global, so this fires for *every* artifact -- the
+    // decoder during the initial load, but also the encoder fetched
+    // lazily on the first Send and the gradient graph on the first
+    // refinement. The fetcher always ends with a final
+    // (size, size) call, which is the reset point: without it the
+    // label would read "downloading" for the rest of the session
+    // after any of those later fetches.
+    if (total > 0 && received >= total) {
+        model_label_->setText(state_->model() != nullptr
+                                  ? tr("Model ready")
+                                  : tr("Loading model..."));
+        return;
+    }
+    if (total > 0) {
+        model_label_->setText(tr("Model: downloading %1 / %2 MB")
+                                  .arg(received / 1e6, 0, 'f', 1)
+                                  .arg(total / 1e6, 0, 'f', 1));
+    } else {
+        model_label_->setText(
+            tr("Model: downloading %1 MB").arg(received / 1e6, 0, 'f', 1));
+    }
+}
+
+void MainWindow::on_tx_state(int phase) {
+    // Keyed is Keying through Unkeying inclusive: the lamp exists for
+    // "the radio is (or should be) transmitting right now".
+    const auto p = static_cast<tx::TxPhase>(phase);
+    const bool keyed = p == tx::TxPhase::Keying || p == tx::TxPhase::Sending ||
+                       p == tx::TxPhase::Unkeying;
+    ptt_label_->setVisible(keyed);
+}
+
 void MainWindow::open_settings() {
     SettingsDialog dialog(state_->config(), this);
+    // Test CAT / Test PTT results are shown in a message box the
+    // operator dismisses; the log keeps what it said.
+    connect(&dialog, &SettingsDialog::rigTestFinished, state_,
+            [this](bool ok, const QString& message) {
+                state_->log_event("rig",
+                                  ok ? log::Severity::Info : log::Severity::Error,
+                                  tr("rig test: %1").arg(message));
+            });
     if (dialog.exec() != QDialog::Accepted) return;
 
     // The sequence is the window's, not the dialog's: apply, save,

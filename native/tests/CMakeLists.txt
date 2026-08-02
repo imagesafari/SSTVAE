@@ -26,6 +26,12 @@ target_link_libraries(test_ringbuffer PRIVATE sstvae_core)
 target_include_directories(test_ringbuffer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME ringbuffer COMMAND test_ringbuffer)
 
+add_executable(test_log test_log.cpp)
+target_link_libraries(test_log PRIVATE sstvae_core)
+target_include_directories(test_log PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME log COMMAND test_log)
+set_tests_properties(log PROPERTIES TIMEOUT 120)
+
 # The decode loop's decisions, with a stub decoder in place of the
 # codec -- so the state machine is covered in every build, including
 # --no-codec.
@@ -176,6 +182,14 @@ if(TARGET sstvae_gui)
   sstvae_onnxruntime_copy_runtime(test_overlay_editor)
   add_test(NAME overlay_editor COMMAND test_overlay_editor)
   set_tests_properties(overlay_editor PROPERTIES TIMEOUT 300)
+
+  add_executable(test_log_pane test_log_pane.cpp)
+  target_link_libraries(test_log_pane PRIVATE sstvae_gui)
+  target_include_directories(test_log_pane PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  sstvae_hamlib_copy_runtime(test_log_pane)
+  sstvae_onnxruntime_copy_runtime(test_log_pane)
+  add_test(NAME log_pane COMMAND test_log_pane)
+  set_tests_properties(log_pane PROPERTIES TIMEOUT 300)
 
   add_executable(test_waterfall test_waterfall.cpp)
   target_link_libraries(test_waterfall PRIVATE sstvae_gui)

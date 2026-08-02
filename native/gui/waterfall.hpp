@@ -58,9 +58,20 @@ public:
     void set_ring(std::shared_ptr<rx::RingBuffer> ring);
     void clear();
 
+    // The clip indicator latches: a peak at or over unity marks the
+    // display until the operator clicks the meter. The instantaneous
+    // red bar reverts as soon as the peak passes, which for a 20 fps
+    // meter means a clipped over could come and go entirely unseen.
+    // Latched state is what turns "was it clipping while I was away?"
+    // into a question with an answer -- which is also why replacing
+    // the ring does *not* clear it.
+    bool clip_latched() const { return clip_latched_; }
+    void clear_clip();
+
 protected:
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
 
 private slots:
     // A slot rather than a plain member so a test can drive one frame
@@ -78,6 +89,7 @@ private:
     QImage image_;
     double peak_ = 0.0;
     bool clipping_ = false;
+    bool clip_latched_ = false;
 };
 
 }  // namespace sstvae::gui
