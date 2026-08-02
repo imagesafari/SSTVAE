@@ -28,6 +28,7 @@
 
 #include "app_state.hpp"
 #include "banner.hpp"
+#include "crop_dialog.hpp"
 #include "log/log.hpp"
 #include "log_pane.hpp"
 #include "rx_panel.hpp"
@@ -46,6 +47,7 @@ void usage() {
                  "  --tab N      only this settings tab; default is all\n"
                  "  --transmit   also shoot the transmit panel\n"
                  "  --receive    also shoot the receive panel\n"
+                 "  --crop       also shoot the framing dialog\n"
                  "  --log        also shoot the log pane and error banner\n"
                  "\n"
                  "Writes settings-<n>-<name>.png, one per tab.\n");
@@ -78,6 +80,7 @@ int main(int argc, char** argv) {
     int only_tab = -1;
     bool transmit = false;
     bool receive = false;
+    bool crop = false;
     bool log_widgets = false;
 
     const QStringList args = QCoreApplication::arguments();
@@ -99,6 +102,8 @@ int main(int argc, char** argv) {
             transmit = true;
         } else if (arg == QLatin1String("--receive")) {
             receive = true;
+        } else if (arg == QLatin1String("--crop")) {
+            crop = true;
         } else if (arg == QLatin1String("--log")) {
             log_widgets = true;
         } else {
@@ -172,6 +177,36 @@ int main(int argc, char** argv) {
         std::printf("%s (min %dx%d)\n", path.toLocal8Bit().constData(),
                     panel.minimumSizeHint().width(),
                     panel.minimumSizeHint().height());
+    }
+
+    // The framing dialog, on a 16:9 source -- the case it exists for,
+    // where a quarter of the width is being given up and the dimmed
+    // region is what the operator is deciding about.
+    if (crop) {
+        constexpr int SW = 1600;
+        constexpr int SH = 900;
+        sstvae::images::Picture source(SW, SH);
+        for (int y = 0; y < SH; ++y) {
+            for (int x = 0; x < SW; ++x) {
+                const std::size_t i = (static_cast<std::size_t>(y) * SW + x) * 3;
+                // A coarse checker plus a gradient: structured enough
+                // that the crop window's edges are obvious, and not so
+                // busy that the dimming is hard to read.
+                const bool check = ((x / 100) + (y / 100)) % 2 == 0;
+                source.rgb[i] = static_cast<unsigned char>(check ? 210 : 60);
+                source.rgb[i + 1] = static_cast<unsigned char>(x * 255 / SW);
+                source.rgb[i + 2] = static_cast<unsigned char>(y * 255 / SH);
+            }
+        }
+        sstvae::gui::CropDialog dialog(source, sstvae::images::Framing{});
+        dialog.resize(width > 0 ? width : 640, height > 0 ? height : 560);
+        dialog.show();
+        app.processEvents();
+        const QString path = QStringLiteral("%1/crop.png").arg(out);
+        dialog.grab().save(path);
+        std::printf("%s (min %dx%d)\n", path.toLocal8Bit().constData(),
+                    dialog.minimumSizeHint().width(),
+                    dialog.minimumSizeHint().height());
     }
 
     // The observability widgets, with representative content: the pane

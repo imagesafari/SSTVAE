@@ -16,6 +16,7 @@
 #include <string>
 #include <thread>
 
+#include "images/images.hpp"
 #include "images/types.hpp"
 #include "optimize/speculative.hpp"
 #include "overlay/model.hpp"
@@ -73,6 +74,10 @@ public slots:
     void cancel();
     void choose_image();
     void load_image(const QString& path);
+    // Re-open the framing dialog for the picture already loaded. The
+    // original is kept, so this starts from the source rather than
+    // cropping what the last framing produced.
+    void choose_framing();
     // The receive panel's newest complete picture, for a "last_rx" inset.
     void set_last_rx_image(const images::Picture& image);
 
@@ -100,6 +105,9 @@ private slots:
 
 private:
     void build_ui();
+    // Push `framing_` through `images::fit` into the editor, and
+    // relabel the picture honestly.
+    void apply_framing();
     // Everything from "the operator pressed Send" onwards, once any
     // optimization has settled. Split out because Send may have to wait
     // for the optimizer first, and that wait must not block the GUI.
@@ -117,8 +125,16 @@ private:
     ErrorBanner* banner_ = nullptr;
 
     QPushButton* choose_button_ = nullptr;
+    QPushButton* frame_button_ = nullptr;
     QLabel* image_label_ = nullptr;
     QPushButton* add_rx_button_ = nullptr;
+
+    // The picture as loaded, at its own size, plus how it is framed
+    // into the transmit canvas. Kept apart so re-framing starts from
+    // the source instead of compounding crops.
+    std::optional<images::Picture> source_;
+    QString source_path_;
+    images::Framing framing_;
 
     QGroupBox* properties_ = nullptr;
     QPlainTextEdit* text_edit_ = nullptr;
