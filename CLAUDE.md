@@ -276,6 +276,38 @@ structure and the wiring *between* the panels — half duplex, polling
 paused while keyed, last-received picture offered as a transmit inset —
 are visible and reviewable before the panels themselves exist.
 
+**The receive and transmit panels are side by side in a splitter, not
+in tabs** (2026-08-01). The reference put them in a `QTabWidget` and the
+port inherited it, which meant composing a picture was done blind — no
+waterfall, no decode progress, no incoming preview, on a mode where you
+prepare the next transmission while listening to the current one. Three
+consequences worth knowing: the **waterfall became a horizontal strip**
+above the picture rather than a column beside it (it was already
+frequency-on-x / time-down-y, so this is a layout change and not a
+widget one — but history depth follows height, so a strip holds less of
+it, which is why the splitter is there); the **half-duplex pause has to
+look deliberate** now that the pane stays on screen through an over,
+since a stopped waterfall is otherwise the same picture as a wedged
+capture; and a **last-reception card** keeps mode, callsign, SNR, frame
+count and filename, because the engine wipes all of it from its shared
+state two seconds after a reception and the old "Complete — SNR x" line
+erased itself while the operator was still looking at the picture.
+
+**The status log is a dock, and error reporting has three tiers**
+(2026-08-01). `core/log/` is a Qt-free bounded `StatusLog` plus a
+rotating `FileWriter`; `gui/log_pane.cpp` is the view, backfilled from
+`snapshot()` so entries logged before it existed still appear. The
+tiers exist because everything used to share one overwriting label:
+**errors** are sticky (`ErrorBanner`, dismissed by hand) *and* logged,
+**state** gets its own indicator (PTT lamp, rig chip with error age,
+latched CLIP marker), and **progress** keeps the labels that may
+overwrite each other freely. The rule that produced this: `"PTT OFF
+FAILED — unkey it manually"` was provably destroyed by the `"Sent"`
+that followed it a moment later, on the same label. Errors must never
+be written to those one-line labels — beyond losing them, a long
+message inflates the layout's minimum width, which is measurable: a
+700 px screenshot request came back 1204 px wide.
+
 **The widgets live in `sstvae_gui`, a library, with `sstvae-gui` as
 just `main.cpp`** — so a test can drive a widget. Most of what makes a
 GUI good needs eyes, but the parts that do not have been wrong before:

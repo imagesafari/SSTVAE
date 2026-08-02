@@ -1,8 +1,23 @@
 // The application window.
 //
-// A straight port of `MainWindow` in `sstvae/gui/app.py`: a tab widget
-// with the receive and transmit panels, a File menu, and a status bar
-// carrying callsign, rig and model state.
+// **The receive and transmit panels sit side by side in a splitter,
+// not in tabs.** The reference (and this port until now) put them in a
+// `QTabWidget`, which meant composing a picture was done blind: no
+// waterfall, no decode progress, no incoming preview. On the band that
+// is the wrong trade -- you prepare the next transmission *while*
+// listening, and the thing you most want to see while composing is
+// whether someone else is sending.
+//
+// **The price is the window's minimum width, and it is not small.** A
+// `QSplitter`'s minimum is the *sum* of its children's, not the max a
+// tab widget got away with, and a collapsed pane still counts because
+// it is not hidden. Measured with `sstvae-gui-shot`, which prints each
+// pane's `minimumSizeHint`: transmit 545, receive 464, so the window
+// floor is ~1015 px against ~738 before. Progress-tier labels are
+// therefore set `QSizePolicy::Ignored` wherever they would otherwise
+// pin a width -- that alone took transmit from 738 to 545 -- and
+// anything genuinely narrow needs the scroll-area treatment the
+// settings dialog already uses (SSTVAE-rv9).
 //
 // The wiring between the panels lives here rather than in either of
 // them, because all of it is about the pair: half duplex (our own
@@ -18,7 +33,7 @@
 class QDockWidget;
 class QLabel;
 class QMenu;
-class QTabWidget;
+class QSplitter;
 class QTimer;
 
 namespace sstvae::gui {
@@ -53,7 +68,7 @@ private:
     void refresh_rig_error_age();
 
     AppState* state_ = nullptr;
-    QTabWidget* tabs_ = nullptr;
+    QSplitter* panes_ = nullptr;
     ReceivePanel* rx_panel_ = nullptr;
     TransmitPanel* tx_panel_ = nullptr;
     QLabel* ptt_label_ = nullptr;

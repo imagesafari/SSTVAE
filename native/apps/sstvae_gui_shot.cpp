@@ -30,6 +30,7 @@
 #include "banner.hpp"
 #include "log/log.hpp"
 #include "log_pane.hpp"
+#include "rx_panel.hpp"
 #include "settings/settings.hpp"
 #include "settings_dialog.hpp"
 #include "tx_panel.hpp"
@@ -44,6 +45,7 @@ void usage() {
                  "  --size WxH   window size (default: the window's own)\n"
                  "  --tab N      only this settings tab; default is all\n"
                  "  --transmit   also shoot the transmit panel\n"
+                 "  --receive    also shoot the receive panel\n"
                  "  --log        also shoot the log pane and error banner\n"
                  "\n"
                  "Writes settings-<n>-<name>.png, one per tab.\n");
@@ -75,6 +77,7 @@ int main(int argc, char** argv) {
     int height = 0;
     int only_tab = -1;
     bool transmit = false;
+    bool receive = false;
     bool log_widgets = false;
 
     const QStringList args = QCoreApplication::arguments();
@@ -94,6 +97,8 @@ int main(int argc, char** argv) {
             only_tab = args[++i].toInt();
         } else if (arg == QLatin1String("--transmit")) {
             transmit = true;
+        } else if (arg == QLatin1String("--receive")) {
+            receive = true;
         } else if (arg == QLatin1String("--log")) {
             log_widgets = true;
         } else {
@@ -136,7 +141,37 @@ int main(int argc, char** argv) {
         app.processEvents();
         const QString path = QStringLiteral("%1/transmit.png").arg(out);
         panel.grab().save(path);
-        std::printf("%s\n", path.toLocal8Bit().constData());
+        // The minimum is reported because it is a real constraint on
+        // the window: the two panes sit in a splitter, whose minimum is
+        // the *sum* of its children's, so a pane that quietly demands
+        // 700 px sets the floor for the whole application.
+        std::printf("%s (min %dx%d)\n", path.toLocal8Bit().constData(),
+                    panel.minimumSizeHint().width(),
+                    panel.minimumSizeHint().height());
+    }
+
+    // The receive pane at the width the dual-pane split gives it --
+    // the shape the waterfall strip and the picture have to share.
+    // `MainWindow` itself is still not a target here (it starts a model
+    // load and opens the rig), so the *arrangement* of the two panes is
+    // reviewed by reading; each pane's own layout is reviewed here.
+    if (receive) {
+        sstvae::gui::AppState state;
+        sstvae::gui::ReceivePanel panel(&state);
+        // Populated, not pristine: an empty pane hides exactly what has
+        // to be looked at -- the card at its full length, the banner
+        // inside the layout, and the longest status line the panel can
+        // produce, each of which sets a width floor. The transmit shot
+        // below injects its worst message for the same reason.
+        panel.fill_for_screenshot();
+        panel.resize(width > 0 ? width : 540, height > 0 ? height : 700);
+        panel.show();
+        app.processEvents();
+        const QString path = QStringLiteral("%1/receive.png").arg(out);
+        panel.grab().save(path);
+        std::printf("%s (min %dx%d)\n", path.toLocal8Bit().constData(),
+                    panel.minimumSizeHint().width(),
+                    panel.minimumSizeHint().height());
     }
 
     // The observability widgets, with representative content: the pane
