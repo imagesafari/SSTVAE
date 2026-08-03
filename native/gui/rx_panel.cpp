@@ -200,8 +200,13 @@ void ReceivePanel::resizeEvent(QResizeEvent* event) {
 void ReceivePanel::place_banner() {
     if (banner_ == nullptr || preview_ == nullptr) return;
     const QRect over = preview_->geometry();
-    const int wanted = banner_->sizeHint().height();
-    banner_->setGeometry(over.x(), over.y(), over.width(), std::max(1, wanted));
+    // `heightForWidth`, not `sizeHint`: the message wraps, and a hint
+    // taken at unconstrained width is one line -- so a long device name
+    // was clipped to a sliver of its own text. Measured at the width it
+    // will actually get.
+    const int wanted = banner_->heightForWidth(over.width());
+    banner_->setGeometry(over.x(), over.y(), over.width(),
+                         std::max(banner_->sizeHint().height(), wanted));
     banner_->raise();
 }
 

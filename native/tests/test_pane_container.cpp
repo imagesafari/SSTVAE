@@ -24,8 +24,11 @@
 
 #include <QApplication>
 #include <QLabel>
+#include <QPushButton>
+#include <QSize>
 #include <QSizePolicy>
 #include <QPointer>
+#include <QSize>
 #include <QSizePolicy>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -33,6 +36,7 @@
 #include <string>
 
 #include "check.hpp"
+#include "flow_layout.hpp"
 #include "pane_container.hpp"
 
 using namespace sstvae;
@@ -115,28 +119,47 @@ void test_resolve_layout() {
     // An explicit setting wins over the screen, in both directions:
     // wanting both halves on a small panel is allowed, and so is
     // wanting tabs on a large one.
-    check::equal(static_cast<int>(gui::resolve_layout("split", 800, 1015)),
+    check::equal(static_cast<int>(gui::resolve_layout("split", QSize(800, 1200), QSize(1015, 700))),
                  static_cast<int>(PaneLayout::Split),
                  "an explicit 'split' is honoured on a screen too small for it");
-    check::equal(static_cast<int>(gui::resolve_layout("tabs", 3840, 1015)),
+    check::equal(static_cast<int>(gui::resolve_layout("tabs", QSize(3840, 1200), QSize(1015, 700))),
                  static_cast<int>(PaneLayout::Tabs),
                  "an explicit 'tabs' is honoured on a large screen");
 
-    check::equal(static_cast<int>(gui::resolve_layout("auto", 1920, 1015)),
+    check::equal(static_cast<int>(gui::resolve_layout("auto", QSize(1920, 1200), QSize(1015, 700))),
                  static_cast<int>(PaneLayout::Split), "auto: it fits");
-    check::equal(static_cast<int>(gui::resolve_layout("auto", 800, 1015)),
+    check::equal(static_cast<int>(gui::resolve_layout("auto", QSize(800, 1200), QSize(1015, 700))),
                  static_cast<int>(PaneLayout::Tabs), "auto: it does not fit");
     // Exactly the available width is a fit: a maximised window is a
     // legitimate way to run this app, and availableGeometry has already
     // taken the panels and docks off.
-    check::equal(static_cast<int>(gui::resolve_layout("auto", 1015, 1015)),
+    check::equal(static_cast<int>(gui::resolve_layout("auto", QSize(1015, 1200), QSize(1015, 700))),
                  static_cast<int>(PaneLayout::Split), "auto: exactly fits");
+
+    // **Height is a constraint too**, and this is what that adds: a
+    // screen wide enough for side by side but too short for it must
+    // still choose tabs. Before this, only width was compared -- fine
+    // while the split layout's height floor was fixed, and wrong once
+    // wrapping made that floor rise as the window narrows.
+    check::equal(static_cast<int>(gui::resolve_layout("auto", QSize(1920, 600),
+                                                     QSize(1015, 800))),
+                 static_cast<int>(PaneLayout::Tabs),
+                 "auto: wide enough but too short still picks tabs");
+    check::equal(static_cast<int>(gui::resolve_layout("auto", QSize(1920, 900),
+                                                     QSize(1015, 800))),
+                 static_cast<int>(PaneLayout::Split),
+                 "auto: room in both axes stays side by side");
+    // An unmeasurable screen is an unanswered question in either axis.
+    check::equal(static_cast<int>(gui::resolve_layout("auto", QSize(1920, 0),
+                                                     QSize(1015, 800))),
+                 static_cast<int>(PaneLayout::Split),
+                 "auto: an unmeasurable height falls to side by side");
 
     // The failure that must not read as "small screen". A screen we
     // could not measure is an unanswered question, and answering it
     // with the fallback layout would quietly demote every operator
     // whose platform did not report a geometry.
-    check::equal(static_cast<int>(gui::resolve_layout("auto", 0, 1015)),
+    check::equal(static_cast<int>(gui::resolve_layout("auto", QSize(0, 1200), QSize(1015, 700))),
                  static_cast<int>(PaneLayout::Split),
                  "auto: an unmeasurable screen falls to side by side");
 }
@@ -162,8 +185,20 @@ Pane make_pane(int strip_rows) {
     auto* strip_layout = new QVBoxLayout(strip);
     strip_layout->setContentsMargins(0, 0, 0, 0);
     for (int i = 0; i < strip_rows; ++i) {
-        auto* row = new QLabel(QStringLiteral("row"), strip);
-        row->setFixedHeight(20);
+        // **A wrapping row of real buttons, not a fixed-height label.**
+        // The first version of this fixture used labels of a fixed
+        // height, so the strips could not wrap and the test passed
+        // without ever exercising the case that broke: at narrow widths
+        // the two strips reflow to *different* row counts, and a single
+        // measurement of their heights is then wrong. Different button
+        // counts per row make the two sides wrap at different widths,
+        // which is exactly the real panes' situation.
+        auto* row = new QWidget(strip);
+        auto* flow = new gui::FlowLayout(row);
+        for (int b = 0; b < 3 + i * 2; ++b) {
+            auto* button = new QPushButton(QStringLiteral("button %1").arg(b), row);
+            flow->addWidget(button);
+        }
         strip_layout->addWidget(row);
     }
     layout->addWidget(strip);
@@ -188,8 +223,11 @@ void test_the_two_pictures_are_the_same_size() {
     container.set_control_strips(rx.strip, tx.strip);
     container.show();
 
-    for (const QSize size : {QSize(1200, 700), QSize(1600, 900), QSize(900, 1100),
-                             QSize(2000, 620)}) {
+    // Deliberately spanning the widths where the rows wrap differently:
+    // 760 and 900 are narrow enough that the two strips take different
+    // numbers of lines, which is where a single-pass measurement failed.
+    for (const QSize size : {QSize(760, 900), QSize(900, 1100), QSize(1200, 700),
+                             QSize(1600, 900), QSize(2000, 620)}) {
         for (int pass = 0; pass < 2; ++pass) {
             container.setGeometry(0, 0, size.width(), size.height());
             QCoreApplication::processEvents();

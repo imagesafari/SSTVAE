@@ -207,6 +207,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     on_layout_changed(panes_->mode());
 
     panes_->set_mode(startup_layout());
+    // After the layout is chosen, since the chosen one decides the size.
+    fit_to_screen();
 
     state_->load_model_async();
     state_->connect_rig();
@@ -271,24 +273,53 @@ void MainWindow::build_layout_menu() {
 }
 
 PaneLayout MainWindow::startup_layout() const {
-    // What the splitter arrangement actually needs, measured rather
-    // than guessed: the panels' minimums move whenever either panel
-    // gains a control, and a hardcoded breakpoint would silently stop
-    // matching the layout it was chosen for.
-    const int required = panes_->minimumSizeHint().width();
-    const QScreen* screen = this->screen();
-    const int available = screen != nullptr ? screen->availableGeometry().width() : 0;
+    // What the side-by-side arrangement actually needs, measured rather
+    // than guessed: the panels' minimums move whenever either gains a
+    // control, and a hardcoded breakpoint would silently stop matching
+    // the layout it was chosen for.
+    const QSize required = panes_->minimumSizeHint();
+    const QSize available = available_screen();
     const PaneLayout mode =
         resolve_layout(state_->config().ui.layout, available, required);
     if (mode == PaneLayout::Tabs && state_->config().ui.layout == "auto") {
+        // Which axis, and by how much. "Starting in tabs" on its own
+        // reads as an arbitrary decision; the numbers make it checkable
+        // and tell the operator what would have to change.
         state_->log_event(
             "app", log::Severity::Info,
-            tr("screen is %1 px wide and side by side needs %2; starting in tabs "
+            tr("screen is %1x%2 and side by side needs %3x%4; starting in tabs "
                "(View > Layout)")
-                .arg(available)
-                .arg(required));
+                .arg(available.width())
+                .arg(available.height())
+                .arg(required.width())
+                .arg(required.height()));
     }
     return mode;
+}
+
+QSize MainWindow::available_screen() const {
+    const QScreen* screen = this->screen();
+    return screen != nullptr ? screen->availableGeometry().size() : QSize();
+}
+
+void MainWindow::fit_to_screen() {
+    const QSize available = available_screen();
+    if (!available.isValid()) return;
+    // **The window may not open larger than the screen.** If it does,
+    // the menu bar goes off the edge with everything else, so View >
+    // Layout -- the way out of a layout that does not fit -- cannot be
+    // reached from inside the application at all. That is what an
+    // operator actually hit.
+    const QSize want = size();
+    const QSize fitted = want.boundedTo(available);
+    if (fitted == want) return;
+    resize(fitted);
+    state_->log_event("app", log::Severity::Info,
+                      tr("window would not fit the %1x%2 screen; opened at %3x%4")
+                          .arg(available.width())
+                          .arg(available.height())
+                          .arg(fitted.width())
+                          .arg(fitted.height()));
 }
 
 void MainWindow::on_layout_changed(PaneLayout mode) {

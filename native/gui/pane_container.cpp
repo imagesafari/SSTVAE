@@ -14,8 +14,8 @@
 
 namespace sstvae::gui {
 
-PaneLayout resolve_layout(const std::string& setting, int available_width,
-                          int split_minimum_width) {
+PaneLayout resolve_layout(const std::string& setting, QSize available,
+                          QSize split_minimum) {
     if (setting == "split") return PaneLayout::Split;
     if (setting == "tabs") return PaneLayout::Tabs;
     // "auto", and anything else -- settings.cpp has already normalised
@@ -26,8 +26,10 @@ PaneLayout resolve_layout(const std::string& setting, int available_width,
     // small screen, it is an unanswered question; side by side is the
     // better layout, so an unknown falls to it rather than to the
     // fallback for a constraint nobody measured.
-    if (available_width <= 0) return PaneLayout::Split;
-    return split_minimum_width <= available_width ? PaneLayout::Split : PaneLayout::Tabs;
+    if (available.width() <= 0 || available.height() <= 0) return PaneLayout::Split;
+    const bool fits = split_minimum.width() <= available.width() &&
+                      split_minimum.height() <= available.height();
+    return fits ? PaneLayout::Split : PaneLayout::Tabs;
 }
 
 PaneContainer::PaneContainer(QWidget* first, QString first_title, QWidget* second,
@@ -184,16 +186,43 @@ void PaneContainer::equalise_strips() {
     QWidget* a = first_strip_.data();
     QWidget* b = second_strip_.data();
     if (a == nullptr || b == nullptr) return;
-    // Released first, then measured, then applied: carrying the last
-    // pass's minimum into this one would ratchet the strips taller on
-    // every resize and never let them shrink back.
-    a->setMinimumHeight(0);
-    b->setMinimumHeight(0);
-    const int tallest =
-        std::max(strip_height_for_width(a), strip_height_for_width(b));
-    if (tallest <= 0) return;
-    a->setMinimumHeight(tallest);
-    b->setMinimumHeight(tallest);
+
+    // **Settle, rather than measure once.** Raising a strip's minimum
+    // takes height from the picture above it, which re-lays the pane
+    // out -- and with wrapping rows, a strip's required height depends
+    // on the width it ends up with. One pass measured a width the panes
+    // no longer had, so at narrow sizes the two strips kept different
+    // row counts and the pictures came out 521 against 444.
+    //
+    // Two extra passes is enough for the widths to stop moving (they
+    // are fixed by the panes, which are locked equal); the loop exits
+    // early when nothing changed, so the common case is one pass.
+    for (int pass = 0; pass < 3; ++pass) {
+        // Released before measuring: carrying the last pass's minimum
+        // in would ratchet the strips taller and never let them shrink.
+        a->setMinimumHeight(0);
+        b->setMinimumHeight(0);
+        if (a->layout() != nullptr) a->layout()->activate();
+        if (b->layout() != nullptr) b->layout()->activate();
+        const int tallest =
+            std::max(strip_height_for_width(a), strip_height_for_width(b));
+        if (tallest <= 0) return;
+        const bool settled = a->minimumHeight() == tallest && b->minimumHeight() == tallest;
+        a->setMinimumHeight(tallest);
+        b->setMinimumHeight(tallest);
+        if (settled) return;
+        // **Re-run the panes, not just the strips.** Raising a strip's
+        // minimum changes how much is left for the picture above it, and
+        // that division is made by the *pane's* layout. Activating only
+        // the strip and the container left the receive pane still
+        // holding the picture height it computed before the minimum
+        // existed -- so its strip ran 68 px off the bottom of the pane
+        // and the two pictures came out 521 against 444.
+        for (QWidget* pane : {first_, second_}) {
+            if (pane->layout() != nullptr) pane->layout()->activate();
+        }
+        if (layout() != nullptr) layout()->activate();
+    }
 }
 
 void PaneContainer::resizeEvent(QResizeEvent* event) {

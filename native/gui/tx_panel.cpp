@@ -871,8 +871,9 @@ void TransmitPanel::resizeEvent(QResizeEvent* event) {
 void TransmitPanel::place_banner() {
     if (banner_ == nullptr || editor_ == nullptr) return;
     const QRect over = editor_->geometry();
+    const int wanted = banner_->heightForWidth(over.width());
     banner_->setGeometry(over.x(), over.y(), over.width(),
-                         std::max(1, banner_->sizeHint().height()));
+                         std::max(banner_->sizeHint().height(), wanted));
     banner_->raise();
 }
 

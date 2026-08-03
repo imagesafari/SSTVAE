@@ -34,6 +34,7 @@
 #define SSTVAE_GUI_MAIN_WINDOW_HPP
 
 #include <QMainWindow>
+#include <QSize>
 
 #include "pane_container.hpp"
 
@@ -75,6 +76,11 @@ private:
     void choose_layout(PaneLayout mode);
     // What the config and the screen between them say to start in.
     PaneLayout startup_layout() const;
+    // The screen's usable area, or an invalid size if the platform did
+    // not report one.
+    QSize available_screen() const;
+    // Shrink the window to the screen if it opened larger, and say so.
+    void fit_to_screen();
     void on_layout_changed(PaneLayout mode);
     // The receive status line, mirrored into the status bar while
     // tabbed -- see `on_rx_status`.

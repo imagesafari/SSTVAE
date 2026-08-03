@@ -30,6 +30,7 @@
 #define SSTVAE_GUI_PANE_CONTAINER_HPP
 
 #include <QPointer>
+#include <QSize>
 #include <QString>
 #include <QWidget>
 
@@ -53,6 +54,12 @@ enum class PaneLayout {
 // off the edge if they like, and one who prefers tabs on a large screen
 // is not overruled. Only "auto" measures.
 //
+// **Both axes.** It compared width only, which was defensible while the
+// split layout's height floor was fixed. It is not once the control rows
+// wrap: the height floor then *rises* as the window narrows, so a screen
+// that is wide enough and short enough would get side by side and not
+// fit. Either axis failing is enough to choose tabs.
+//
 // **"auto" is resolved against the screen, once, and never against the
 // window's own width.** A live breakpoint reads like the obvious
 // implementation and cannot work: while side by side is in force, the
@@ -60,8 +67,8 @@ enum class PaneLayout {
 // narrow width that would trigger a switch away from it. The downward
 // transition is unreachable, so the layout would only ever get *more*
 // cramped, never less.
-PaneLayout resolve_layout(const std::string& setting, int available_width,
-                          int split_minimum_width);
+PaneLayout resolve_layout(const std::string& setting, QSize available,
+                          QSize split_minimum);
 
 class PaneContainer : public QWidget {
     Q_OBJECT
