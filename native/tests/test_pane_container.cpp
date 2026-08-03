@@ -280,6 +280,37 @@ void test_sizes_survive_a_mode_round_trip() {
                  "and the two are still equal afterwards");
 }
 
+// **A widget that must not pin the window's width still has to be
+// visible.** `QSizePolicy::Ignored` is how several progress-tier
+// surfaces avoid setting a width floor -- and `QWidgetItem::sizeHint()`
+// answers zero for an Ignored axis, which a layout with stretch to give
+// can interpret sensibly and this one cannot. Laid out literally, the
+// transmit status label and the send progress bar were 0 px wide: the
+// refiner's running "+x.x dB" report simply stopped appearing, and an
+// operator noticed before any test did.
+void test_ignored_width_widgets_are_still_laid_out() {
+    QWidget host;
+    auto* flow = new gui::FlowLayout(&host);
+    auto* normal = new QPushButton(QStringLiteral("Send"), &host);
+    auto* ignored = new QLabel(QStringLiteral("Refining picture... +3.2 dB est."), &host);
+    ignored->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    flow->addWidget(normal);
+    flow->addWidget(ignored);
+    host.resize(900, 80);
+    host.show();
+    QCoreApplication::processEvents();
+
+    check::is_true(ignored->width() > 0,
+                   "an Ignored-width widget is given a real width");
+    check::is_true(ignored->width() >= ignored->sizeHint().width() / 2,
+                   "and enough of one to read its text");
+    // ...while still not raising the floor, which is the reason it was
+    // marked Ignored in the first place. The layout's minimum must come
+    // from the *other* item.
+    check::is_true(flow->minimumSize().width() <= normal->sizeHint().width() + 4,
+                   "and it still does not pin the layout's minimum width");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -292,6 +323,7 @@ int main(int argc, char** argv) {
     test_resolve_layout();
     test_the_two_pictures_are_the_same_size();
     test_sizes_survive_a_mode_round_trip();
+    test_ignored_width_widgets_are_still_laid_out();
 
     return check::report("pane container");
 }

@@ -28,6 +28,7 @@
 #include <QLayout>
 #include <QList>
 #include <QRect>
+#include <QLayoutItem>
 #include <QSize>
 
 namespace sstvae::gui {
@@ -53,6 +54,9 @@ public:
 private:
     // `apply` false measures, true also moves the items. One routine for
     // both so a measured height cannot disagree with a laid-out one.
+    // See the .cpp: an `Ignored` axis reports zero through the item,
+    // which this layout must not take literally.
+    static QSize item_size(const QLayoutItem* item);
     int reflow(const QRect& rect, bool apply) const;
 
     QList<QLayoutItem*> items_;

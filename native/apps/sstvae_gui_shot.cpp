@@ -22,6 +22,8 @@
 #include <QPixmap>
 #include <QStringList>
 #include <QLayout>
+#include <QLabel>
+#include <QProgressBar>
 #include <QTabWidget>
 
 #include <cmath>

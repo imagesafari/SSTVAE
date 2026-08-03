@@ -49,6 +49,31 @@ QSize FlowLayout::minimumSize() const {
     return widest + QSize(m.left() + m.right(), m.top() + m.bottom());
 }
 
+// What to lay an item out at.
+//
+// **Not simply `item->sizeHint()`.** `QWidgetItem::sizeHint()` returns
+// *zero* on any axis whose size policy is `Ignored` -- which is a
+// sensible answer to a layout that distributes stretch, and the wrong
+// one here, because this layout has no stretch to give. Several widgets
+// carry `Ignored` horizontally precisely so they cannot pin the
+// window's width, and they came out 0 px wide: the transmit status
+// label (which is where the refiner reports its progress) and the send
+// progress bar were both laid out at zero and simply were not there.
+// Reported by an operator who noticed the refiner had gone quiet.
+//
+// Asking the widget directly restores a real width. The floor is
+// unaffected, because `minimumSize()` still uses `item->minimumSize()`,
+// which stays zero for an Ignored axis -- so these widgets are visible
+// and still cannot stop the window being narrowed.
+QSize FlowLayout::item_size(const QLayoutItem* item) {
+    QSize want = item->sizeHint();
+    if (const QWidget* w = item->widget()) {
+        if (want.width() <= 0) want.setWidth(w->sizeHint().width());
+        if (want.height() <= 0) want.setHeight(w->sizeHint().height());
+    }
+    return want;
+}
+
 int FlowLayout::reflow(const QRect& rect, bool apply) const {
     const QMargins m = contentsMargins();
     const QRect inner = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom());
@@ -57,7 +82,7 @@ int FlowLayout::reflow(const QRect& rect, bool apply) const {
     int line_height = 0;
 
     for (QLayoutItem* item : items_) {
-        const QSize want = item->sizeHint();
+        const QSize want = item_size(item);
         int next = x + want.width();
         // Wrap when this item would cross the right edge -- unless it is
         // the first on the line, in which case there is nowhere better
