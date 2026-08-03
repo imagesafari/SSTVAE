@@ -9,8 +9,9 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
+#include <QActionGroup>
 #include <QMessageBox>
-#include <QSplitter>
+#include <QScreen>
 #include <QStatusBar>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -18,6 +19,7 @@
 
 #include "app_state.hpp"
 #include "log_pane.hpp"
+#include "pane_container.hpp"
 #include "rig/hamlib.hpp"
 #include "rx_panel.hpp"
 #include "settings_dialog.hpp"
@@ -40,9 +42,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // The height is unchanged from the tabbed window.
     resize(1360, 800);
 
-    panes_ = new QSplitter(Qt::Horizontal, this);
-    rx_panel_ = new ReceivePanel(state_, panes_);
-    tx_panel_ = new TransmitPanel(state_, panes_);
+    rx_panel_ = new ReceivePanel(state_);
+    tx_panel_ = new TransmitPanel(state_);
 
     // **Each pane is named.** The tabs this replaced carried the only
     // labels that said which half was which, and dropping them left two
@@ -50,23 +51,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // infer from a button caption ("Start receiving", "Send"). Driving
     // it settles the question: inferring is not the same as seeing.
     //
-    // The titles go on here rather than inside the panels because this
-    // is where the pairing lives -- neither panel has any business
-    // knowing it sits beside the other one -- and because a group box
-    // is the plain Qt idiom for "this framed region is X", matching the
-    // Picture/Overlay boxes already inside them.
-    panes_->addWidget(build_pane(tr("Receive"), rx_panel_));
-    panes_->addWidget(build_pane(tr("Transmit"), tx_panel_));
-    // A wide handle so the division between the two reads as a
-    // division, not as a gap between controls.
-    panes_->setHandleWidth(6);
-    // The composer is the wider of the two by default -- it holds an
-    // editable 4:3 canvas, where the monitor holds a preview and a
-    // spectrum strip. Neither is pinned: both are collapsible, so an
-    // operator who is only listening can push the composer shut and get
-    // the whole window back.
-    panes_->setStretchFactor(0, 2);
-    panes_->setStretchFactor(1, 3);
+    // The titles go on the container rather than inside the panels
+    // because that is where the pairing lives -- neither panel has any
+    // business knowing it sits beside the other one -- and it is also
+    // what lets the same two words be a group-box title in one layout
+    // and a tab label in the other.
+    panes_ = new PaneContainer(rx_panel_, tr("Receive"), tx_panel_, tr("Transmit"), this);
 
     // Half duplex: our own transmission must not be decoded back into a
     // received picture. Frequency polling pauses too -- the answer is
@@ -108,6 +98,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                 statusBar()->showMessage(tr("Saved %1").arg(path), 5000);
             });
 
+    // The receive status is mirrored into the status bar while tabbed,
+    // so composing a picture is not done blind through someone else's
+    // over -- which is the one thing the side-by-side layout buys and
+    // tabs give straight back. Connected in both layouts: a switch mid
+    // reception then has a current line to show rather than a stale one
+    // or none.
+    connect(rx_panel_, &ReceivePanel::statusChanged, this, &MainWindow::on_rx_status);
+    connect(panes_, &PaneContainer::modeChanged, this, &MainWindow::on_layout_changed);
+    on_layout_changed(panes_->mode());
+
+    panes_->set_mode(startup_layout());
+
     state_->load_model_async();
     state_->connect_rig();
     update_station_label();
@@ -126,22 +128,86 @@ MainWindow::~MainWindow() {
     delete takeCentralWidget();
 }
 
-QWidget* MainWindow::build_pane(const QString& title, QWidget* content) {
-    auto* box = new QGroupBox(title, panes_);
-    // Bold, because this is the label that answers "which half am I
-    // looking at" and the boxes nested inside it are titled too. The
-    // font is the only change -- no stylesheet, no colour.
-    QFont heading = box->font();
-    heading.setBold(true);
-    box->setFont(heading);
-    auto* layout = new QVBoxLayout(box);
-    layout->setContentsMargins(6, 4, 6, 6);
-    // The content keeps the default weight; only the title is bold.
-    QFont body = content->font();
-    body.setBold(false);
-    content->setFont(body);
-    layout->addWidget(content);
-    return box;
+void MainWindow::build_layout_menu() {
+    // A submenu with two exclusive checkable entries rather than one
+    // "Tabbed layout" toggle: the two arrangements are peers, and a
+    // checkbox would make the operator work out which state its unticked
+    // form means.
+    //
+    // Deliberately no "Auto" entry, even though "auto" is a value the
+    // config holds. Auto is a *first-run guess*, and offering it back to
+    // someone who has already seen the window would be asking them to
+    // choose "whatever you think" over an answer they can see. Picking
+    // either entry writes a concrete value and ends the guessing.
+    QMenu* layout = view_menu_->addMenu(tr("&Layout"));
+    auto* group = new QActionGroup(this);
+    group->setExclusive(true);
+
+    split_action_ = layout->addAction(tr("&Side by side"));
+    split_action_->setCheckable(true);
+    split_action_->setActionGroup(group);
+    connect(split_action_, &QAction::triggered, this,
+            [this] { choose_layout(PaneLayout::Split); });
+
+    tabs_action_ = layout->addAction(tr("&Tabbed"));
+    tabs_action_->setCheckable(true);
+    tabs_action_->setActionGroup(group);
+    connect(tabs_action_, &QAction::triggered, this,
+            [this] { choose_layout(PaneLayout::Tabs); });
+
+    view_menu_->addSeparator();
+}
+
+PaneLayout MainWindow::startup_layout() const {
+    // What the splitter arrangement actually needs, measured rather
+    // than guessed: the panels' minimums move whenever either panel
+    // gains a control, and a hardcoded breakpoint would silently stop
+    // matching the layout it was chosen for.
+    const int required = panes_->minimumSizeHint().width();
+    const QScreen* screen = this->screen();
+    const int available = screen != nullptr ? screen->availableGeometry().width() : 0;
+    const PaneLayout mode =
+        resolve_layout(state_->config().ui.layout, available, required);
+    if (mode == PaneLayout::Tabs && state_->config().ui.layout == "auto") {
+        state_->log_event(
+            "app", log::Severity::Info,
+            tr("screen is %1 px wide and side by side needs %2; starting in tabs "
+               "(View > Layout)")
+                .arg(available)
+                .arg(required));
+    }
+    return mode;
+}
+
+void MainWindow::on_layout_changed(PaneLayout mode) {
+    const bool tabbed = mode == PaneLayout::Tabs;
+    // The receive summary earns its place in the status bar only when
+    // the receive pane can be off screen. In split mode it would be the
+    // same words twice, an arm's length apart.
+    rx_status_label_->setVisible(tabbed);
+    if (tabbed) rx_status_label_->setText(rx_status_text_);
+    if (split_action_ != nullptr) split_action_->setChecked(!tabbed);
+    if (tabs_action_ != nullptr) tabs_action_->setChecked(tabbed);
+}
+
+void MainWindow::on_rx_status(const QString& text) {
+    rx_status_text_ = text;
+    if (rx_status_label_->isVisible()) rx_status_label_->setText(text);
+    // The tab label carries the short form, because the status bar is
+    // at the other end of the window from the tab the operator is
+    // deciding whether to look at.
+    panes_->set_first_note(rx_panel_->listening() ? tr("listening") : QString());
+}
+
+void MainWindow::choose_layout(PaneLayout mode) {
+    // An explicit choice ends "auto". Auto is a guess about the screen,
+    // and a person who has just answered the question should not be
+    // re-guessed at on the next launch -- including when they pick the
+    // layout auto would have picked anyway, since the screen may be a
+    // different one next time.
+    state_->config().ui.layout = mode == PaneLayout::Tabs ? "tabs" : "split";
+    state_->save_config();
+    panes_->set_mode(mode);
 }
 
 void MainWindow::build_menu() {
@@ -174,6 +240,7 @@ void MainWindow::build_menu() {
     // The action is added in build_log_dock(), which runs after this;
     // the menu pointer is kept on the window via findChild-free means.
     view_menu_ = menuBar()->addMenu(tr("&View"));
+    build_layout_menu();
 
     QMenu* help = menuBar()->addMenu(tr("&Help"));
     QAction* about = help->addAction(tr("&About SSTVAE"));
@@ -216,6 +283,16 @@ void MainWindow::build_status_bar() {
     ptt_palette.setColor(QPalette::WindowText, QColor(0xb3, 0x26, 0x1e));
     ptt_label_->setPalette(ptt_palette);
     ptt_label_->hide();
+
+    // The receive summary, for tabbed mode -- hidden in split mode,
+    // where the receive pane is on screen saying the same thing.
+    // `Ignored` so a long reception line ("Receiving mode C: frame
+    // 431/440 (98%) -- SNR 12.4 dB de W1AW") cannot pin the window's
+    // minimum width, which is the whole reason the tabbed layout exists.
+    rx_status_label_ = new QLabel(QString(), this);
+    rx_status_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    rx_status_label_->hide();
+    bar->addWidget(rx_status_label_, 1);
 
     station_label_ = new QLabel(QString(), this);
     rig_label_ = new QLabel(tr("Rig control off"), this);

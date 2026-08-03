@@ -15,9 +15,14 @@
 // pane's `minimumSizeHint`: transmit 545, receive 464, so the window
 // floor is ~1015 px against ~738 before. Progress-tier labels are
 // therefore set `QSizePolicy::Ignored` wherever they would otherwise
-// pin a width -- that alone took transmit from 738 to 545 -- and
-// anything genuinely narrow needs the scroll-area treatment the
-// settings dialog already uses (SSTVAE-rv9).
+// pin a width -- that alone took transmit from 738 to 545.
+//
+// **Tabs remain available for a screen that cannot meet that floor**
+// (`ui.layout`, View > Layout). Scrolling inside the panes was the
+// other candidate and treats the symptom: the floor is a property of
+// the arrangement, and only the arrangement can move it. See
+// `pane_container.hpp` for the switch and why "auto" measures the
+// screen rather than the window.
 //
 // The wiring between the panels lives here rather than in either of
 // them, because all of it is about the pair: half duplex (our own
@@ -30,10 +35,12 @@
 
 #include <QMainWindow>
 
+#include "pane_container.hpp"
+
+class QAction;
 class QDockWidget;
 class QLabel;
 class QMenu;
-class QSplitter;
 class QTimer;
 
 namespace sstvae::gui {
@@ -57,10 +64,19 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
-    // Wrap a panel in a titled box, so which half is which is read
-    // rather than inferred from a button caption.
-    QWidget* build_pane(const QString& title, QWidget* content);
     void build_menu();
+    void build_layout_menu();
+    // Switch layout and record the operator's choice. Distinct from
+    // `PaneContainer::set_mode`, which is told what to do: this is the
+    // path that also stops the setting being "auto", because a person
+    // has now answered the question auto was guessing at.
+    void choose_layout(PaneLayout mode);
+    // What the config and the screen between them say to start in.
+    PaneLayout startup_layout() const;
+    void on_layout_changed(PaneLayout mode);
+    // The receive status line, mirrored into the status bar while
+    // tabbed -- see `on_rx_status`.
+    void on_rx_status(const QString& text);
     void build_status_bar();
     void build_log_dock();
     void update_station_label();
@@ -72,7 +88,7 @@ private:
     void refresh_rig_error_age();
 
     AppState* state_ = nullptr;
-    QSplitter* panes_ = nullptr;
+    PaneContainer* panes_ = nullptr;
     ReceivePanel* rx_panel_ = nullptr;
     TransmitPanel* tx_panel_ = nullptr;
     QLabel* ptt_label_ = nullptr;
@@ -82,6 +98,15 @@ private:
     QDockWidget* log_dock_ = nullptr;
     LogPane* log_pane_ = nullptr;
     QMenu* view_menu_ = nullptr;
+    QAction* split_action_ = nullptr;
+    QAction* tabs_action_ = nullptr;
+
+    // The receive panel's own status line, shown in the status bar
+    // *only* while tabbed. Kept even in split mode so a switch mid
+    // reception has something to display at once rather than waiting
+    // for the next poll.
+    QLabel* rx_status_label_ = nullptr;
+    QString rx_status_text_;
 
     // The rig label's error-age display: a CAT failure keeps its text,
     // and this pair appends "(N s ago)" so a stale error cannot pass

@@ -55,7 +55,10 @@ void test_append_and_filter() {
 
     // Live append through the slot, as AppState::logEntry delivers it.
     log.append("tx", Severity::Error, "tx error line");
-    const auto& entry = log.snapshot().back();
+    // By value: `snapshot()` returns a vector, so binding a
+    // reference to its `back()` leaves one dangling at the end of
+    // the full expression -- GCC's -Wdangling-reference is right.
+    const auto entry = log.snapshot().back();
     pane.append(entry.ms, "tx", static_cast<int>(Severity::Error),
                 "tx error line");
     QPlainTextEdit* text = text_of(pane);
@@ -91,7 +94,7 @@ void test_follow_never_scrolls_right() {
     const std::string long_text(300, 'x');
     for (int i = 0; i < 8; ++i) {
         log.append("rx", Severity::Info, long_text);
-        const auto& entry = log.snapshot().back();
+        const auto entry = log.snapshot().back();
         pane.append(entry.ms, "rx", static_cast<int>(Severity::Info),
                     QString::fromStdString(long_text));
     }

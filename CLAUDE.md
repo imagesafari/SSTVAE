@@ -293,6 +293,59 @@ count and filename, because the engine wipes all of it from its shared
 state two seconds after a reception and the old "Complete — SNR x" line
 erased itself while the operator was still looking at the picture.
 
+**Tabs survive as the small-screen layout** (`ui.layout`, View >
+Layout, 2026-08-02), because the splitter's floor is a property of the
+*arrangement* and only the arrangement can move it: measured on the
+real panels with `sstvae-gui-shot --panes`, **1043 px side by side
+against 545 px tabbed**. The scroll-area idea that was filed against
+this treats the symptom. Three things are settled and worth not
+re-deciding. **"auto" is resolved once, at startup, against the
+screen** — a live breakpoint reads like the obvious implementation and
+cannot work, since while side by side is in force the splitter's own
+minimum is exactly what stops the window reaching the width that would
+trigger a switch away from it, so the downward transition is
+unreachable. **Choosing a layout by hand ends "auto"** even when it
+picks what auto would have: the next screen may be a different one.
+And **the receive status line is mirrored into the status bar while
+tabbed**, since tabs give back the one thing side by side buys — seeing
+the band while composing.
+
+`gui/pane_container.cpp` owns the switch, and the order in `set_mode`
+is load-bearing: build the new container *first* (which reparents both
+panels out of the old one), then delete the old one. The obvious
+alternative — detach with `setParent(nullptr)`, delete, re-add — marks
+both panels explicitly hidden, and a widget hidden that way stays
+hidden when it is added to a visible layout. Two related traps, both
+caught by `test_pane_container.cpp` on its first run rather than by
+reading: **every `addWidget`/`addTab` hides what it reparents**, and
+the thing that normally un-hides it is the parent going from hidden to
+visible — which never happens on a switch, so the new container needs
+an explicit `show()` or the window renders empty with nothing having
+failed. And a `QTabWidget` hides its background page with `hide()`,
+which is an *explicit* hide that showing an ancestor does not clear —
+so rebuilding the splitter has to show both panes by hand.
+
+**`gui/picture_box.cpp` is the receive preview, and `setFixedHeight` is
+never how you pin an aspect ratio.** A fixed height is a hard
+*minimum*, so a wide pane raises a floor under the whole window that
+narrowing it never lowers — a ratchet. It was invisible while the
+splitter kept each pane narrow and immediately fatal once a tab gives
+one pane the whole width: **a 1400 px window demanded a 1405 px minimum
+height**, taller than the laptop panels the tabbed layout exists to
+fit. The aspect is now enforced by *geometry* — the label is positioned
+by hand, not in a layout, so it imposes nothing upward — with 4:3 as
+what the box asks for (`sizeHint`) and caps itself at, never as a
+minimum. Given the height the picture is 4:3 and full width, as before;
+denied it the picture stays 4:3 and *narrows*, which the old code could
+not do at all because it simply forced the window taller instead. The
+cap is necessarily one pass behind the width (Qt clamps incoming
+geometry against the previous maximum), which `updateGeometry` closes —
+and `test_picture_box.cpp` drives two passes deliberately rather than
+asserting that a two-pass settle is a one-pass settle. Spare height in
+the receive pane now goes to the **picture** rather than the waterfall
+strip; the old stretch factors were the other way round *because* the
+picture was pinned and could not use it.
+
 **The status log is a dock, and error reporting has three tiers**
 (2026-08-01). `core/log/` is a Qt-free bounded `StatusLog` plus a
 rotating `FileWriter`; `gui/log_pane.cpp` is the view, backfilled from

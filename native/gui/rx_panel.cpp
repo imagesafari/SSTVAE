@@ -31,6 +31,7 @@
 #include "banner.hpp"
 #include "codec/codec.hpp"
 #include "images/images.hpp"
+#include "picture_box.hpp"
 #include "settings/settings.hpp"
 #include "waterfall.hpp"
 
@@ -61,39 +62,6 @@ fs::path unique_path(fs::path path) {
     }
     return path;
 }
-
-// A label that keeps the transmitted picture's 4:3 shape.
-//
-// Without this the preview took every spare pixel of the pane's height,
-// so the dark area was a tall portrait rectangle with a small 4:3
-// picture letterboxed somewhere inside it -- which reads as a broken
-// aspect ratio, because the *box* is the thing the eye measures. No
-// Q_OBJECT: these are plain virtual overrides, nothing for moc to do.
-class AspectLabel : public QLabel {
-public:
-    explicit AspectLabel(const QString& text, QWidget* parent)
-        : QLabel(text, parent) {
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    }
-
-protected:
-    // The aspect is pinned here, from the widget's *own* new width.
-    //
-    // Two earlier attempts got this wrong and both are worth recording.
-    // `heightForWidth` alone is only a *request*: a section shorter
-    // than the sum of what its children want shrinks the preview
-    // toward its minimum, and a 4:3 box came out 2.5:1. Doing it from
-    // the panel's resizeEvent instead reads `preview_->width()` before
-    // the layout has re-run, so it pins to the previous width -- which
-    // produced a 460x90 strip. Inside the label's own resizeEvent the
-    // width is authoritative, and the guard makes the relayout this
-    // triggers settle in one extra pass rather than recurse.
-    void resizeEvent(QResizeEvent* event) override {
-        QLabel::resizeEvent(event);
-        const int want = std::max(60, width() * images::IMG_H / images::IMG_W);
-        if (minimumHeight() != want) setFixedHeight(want);
-    }
-};
 
 // SNR for display, with a placeholder when there is none.
 //
@@ -159,19 +127,11 @@ void ReceivePanel::build_ui() {
     // box between the layout and the label swallows the label's
     // heightForWidth -- which is how the preview ended up 2.5:1 on a
     // tall pane instead of the 4:3 it asks for.
-    preview_ = new AspectLabel(tr("Nothing received yet"), lower);
-    preview_->setAlignment(Qt::AlignCenter);
-    preview_->setMinimumHeight(120);
-    // Palette, not a stylesheet: a stylesheet anywhere makes Qt wrap the
-    // application style in QStyleSheetStyle, which resets padding to
-    // zero across every combo and spin box in the app -- including the
-    // settings dialog, which has nothing to do with this widget.
-    preview_->setAutoFillBackground(true);
-    QPalette dark = preview_->palette();
-    dark.setColor(QPalette::Window, QColor(0x20, 0x20, 0x24));
-    dark.setColor(QPalette::WindowText, QColor(0x88, 0x88, 0x88));
-    preview_->setPalette(dark);
-    lower_layout->addWidget(preview_);
+    preview_ = new PictureBox(tr("Nothing received yet"), lower);
+    // A large stretch, so spare height reaches the picture before the
+    // trailing spacer does -- and it is bounded, because the box caps
+    // itself at 4:3. Whatever the picture cannot use falls through.
+    lower_layout->addWidget(preview_, 10);
 
     status_ = new QLabel(tr("Stopped"), lower);
     // A progress-tier surface must not set a width floor. Its longest
@@ -201,16 +161,18 @@ void ReceivePanel::build_ui() {
 
     splitter->addWidget(waterfall_);
     splitter->addWidget(lower);
-    // The picture takes the growth; the strip keeps roughly the height
-    // its history needs.
-    // Spare height goes to the strip, not the picture: the picture is
-    // pinned at 4:3, and a taller waterfall is more history, which is
-    // the only thing in this pane that benefits from extra pixels.
-    splitter->setStretchFactor(0, 1);
-    splitter->setStretchFactor(1, 0);
-    // A tall pane would otherwise turn the whole surplus into black
-    // spectrum. Past a few hundred pixels the extra history stops
-    // earning its space, and the picture is pinned so it cannot use it.
+    // Spare height goes to the **picture**, not the strip.
+    //
+    // This was the other way round while the picture was pinned at 4:3
+    // by a fixed height: it could not use extra pixels, so the strip
+    // got them. The picture now fits itself to the space it is given
+    // (see `PictureBox`), and a bigger received picture is worth more
+    // than more spectrum history -- especially in a tab, where this
+    // pane has the whole window.
+    splitter->setStretchFactor(0, 0);
+    splitter->setStretchFactor(1, 1);
+    // The strip still stops growing well before that: past a few
+    // hundred pixels the extra history stops earning its space.
     waterfall_->setMaximumHeight(360);
     layout->addWidget(splitter, 1);
 
@@ -329,7 +291,7 @@ bool ReceivePanel::start() {
 
     start_button_->setEnabled(false);
     stop_button_->setEnabled(true);
-    status_->setText(tr("Listening at %1 Hz").arg(device_rate));
+    set_status(tr("Listening at %1 Hz").arg(device_rate));
     // A clean restart of the activity clears its error banner; the log
     // keeps the history.
     banner_->clear();
@@ -359,7 +321,7 @@ void ReceivePanel::stop() {
     if (start_button_ != nullptr) {
         start_button_->setEnabled(true);
         stop_button_->setEnabled(false);
-        status_->setText(tr("Stopped"));
+        set_status(tr("Stopped"));
     }
     if (was_listening) {
         app_->log_event("rx", log::Severity::Info, tr("stopped"));
@@ -375,7 +337,7 @@ void ReceivePanel::suspend_for_transmit() {
     // pause has to look deliberate rather than like a receiver that
     // died: the waterfall stops dead when the ring goes away, and
     // without this it is the same picture as a wedged capture.
-    status_->setText(tr("Paused -- transmitting"));
+    set_status(tr("Paused -- transmitting"));
     preview_->setEnabled(false);
     waterfall_->setEnabled(false);
     // And the button that would undo half duplex. `stop()` re-enables
@@ -473,6 +435,11 @@ void ReceivePanel::save_audio_beside(const std::string& image_path) {
 
 // --- the GUI thread ---------------------------------------------------------
 
+void ReceivePanel::set_status(const QString& text) {
+    status_->setText(text);
+    emit statusChanged(text);
+}
+
 void ReceivePanel::refresh_status() {
     if (!listening()) return;
     const rx::Progress progress = shared_->get();
@@ -525,7 +492,7 @@ void ReceivePanel::refresh_status() {
         }
     }
 
-    status_->setText(text);
+    set_status(text);
     progress_->setValue(static_cast<int>(100.0 * progress.progress_frac));
 
     if (progress.image && progress.image.get() != shown_) {
@@ -612,10 +579,11 @@ void ReceivePanel::on_autosave_toggled(bool on) {
 }
 
 void ReceivePanel::show_image(const images::Picture& image) {
-    preview_pixmap_ = to_pixmap(image);
-    if (preview_pixmap_.isNull()) return;
-    preview_->setPixmap(preview_pixmap_.scaled(preview_->size(), Qt::KeepAspectRatio,
-                                               Qt::SmoothTransformation));
+    const QPixmap pixmap = to_pixmap(image);
+    if (pixmap.isNull()) return;
+    // The box keeps the original and rescales itself on every resize;
+    // the panel no longer has to notice.
+    preview_->set_picture(pixmap);
 }
 
 void ReceivePanel::set_displayed(const images::Picture& image,
@@ -682,7 +650,7 @@ void ReceivePanel::save_current() {
 void ReceivePanel::fill_for_screenshot() {
     // The longest line `refresh_status` can build, the longest card
     // `on_reception` can build, and the banner inside the layout.
-    status_->setText(
+    set_status(
         tr("Receiving mode C: frame 220/220 (100%)  SNR 8.3dB  de KD8XYZ"));
     progress_->setValue(100);
     last_card_->setText(
@@ -717,14 +685,6 @@ void ReceivePanel::open_saved_folder() {
                         tr("could not open %1 -- no handler for local "
                            "folders on this desktop")
                             .arg(dir));
-    }
-}
-
-void ReceivePanel::resizeEvent(QResizeEvent* event) {
-    QWidget::resizeEvent(event);
-    if (!preview_pixmap_.isNull()) {
-        preview_->setPixmap(preview_pixmap_.scaled(
-            preview_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
     }
 }
 
