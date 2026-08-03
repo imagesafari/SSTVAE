@@ -1,0 +1,1092 @@
+<title>SSTVAE UI/UX Review</title>
+<style>
+  :root {
+    --paper:#f5f6f3; --ink:#22262a; --muted:#5b636b; --line:#d9ddd6;
+    --accent:#127a5f; --accent-soft:#e2efe9;
+    --crit:#b3261e; --crit-soft:#f7e4e2;
+    --warn:#96660a; --warn-soft:#f6ecd8;
+    --ok:#2f7d3b; --ok-soft:#e3efe1;
+    --info:#3a6ea5; --info-soft:#e3ecf5;
+    --card:#fcfcfa; --code-bg:#ecefe8; --rail:#eef0ea;
+    --qwin:#2b2d31; --qpanel:#323539; --qcanvas:#202024; --qbtn:#3e4147;
+    --qtext:#d6d8dc; --qmut:#8b9097; --qline:#474a50; --qsel:#3a70ae;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#15181a; --ink:#e2e5e8; --muted:#98a1a9; --line:#2b3035;
+      --accent:#41c396; --accent-soft:#1b2c26;
+      --crit:#ff7d70; --crit-soft:#3a201d;
+      --warn:#e0b153; --warn-soft:#332a17;
+      --ok:#68c47a; --ok-soft:#1d2e1f;
+      --info:#82b4e6; --info-soft:#1d2733;
+      --card:#1c1f22; --code-bg:#22262a; --rail:#1a1d20;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:#15181a; --ink:#e2e5e8; --muted:#98a1a9; --line:#2b3035;
+    --accent:#41c396; --accent-soft:#1b2c26;
+    --crit:#ff7d70; --crit-soft:#3a201d;
+    --warn:#e0b153; --warn-soft:#332a17;
+    --ok:#68c47a; --ok-soft:#1d2e1f;
+    --info:#82b4e6; --info-soft:#1d2733;
+    --card:#1c1f22; --code-bg:#22262a; --rail:#1a1d20;
+  }
+  :root[data-theme="light"] {
+    --paper:#f5f6f3; --ink:#22262a; --muted:#5b636b; --line:#d9ddd6;
+    --accent:#127a5f; --accent-soft:#e2efe9;
+    --crit:#b3261e; --crit-soft:#f7e4e2;
+    --warn:#96660a; --warn-soft:#f6ecd8;
+    --ok:#2f7d3b; --ok-soft:#e3efe1;
+    --info:#3a6ea5; --info-soft:#e3ecf5;
+    --card:#fcfcfa; --code-bg:#ecefe8; --rail:#eef0ea;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font: 15px/1.6 system-ui, "Segoe UI", Roboto, sans-serif;
+    margin: 0; padding: 0 20px 120px;
+  }
+  main { max-width: 1140px; margin: 0 auto; }
+  code, .mono, .fileref {
+    font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.86em;
+  }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+  .fileref { color: var(--muted); white-space: nowrap; }
+  a { color: var(--accent); }
+  h1 { font-size: 30px; line-height: 1.2; margin: 10px 0 4px; letter-spacing: -0.02em; text-wrap: balance; }
+  h2 { font-size: 21px; margin: 0 0 14px; letter-spacing: -0.01em; text-wrap: balance; }
+  h3 { font-size: 16.5px; margin: 26px 0 8px; }
+  h4 { font-size: 14.5px; margin: 18px 0 6px; }
+  p { margin: 10px 0; max-width: 72ch; }
+  li { margin: 4px 0; }
+  .spectrum {
+    height: 5px; border-radius: 3px; margin: 18px 0;
+    background: linear-gradient(90deg, #000 0%, #0033aa 25%, #00a058 55%, #e8d020 80%, #fff 100%);
+  }
+  header.doc { padding-top: 34px; }
+  .eyebrow {
+    text-transform: uppercase; letter-spacing: 0.14em; font-size: 11.5px;
+    color: var(--accent); font-weight: 650;
+  }
+  .docmeta { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .docmeta b { color: var(--ink); font-weight: 600; }
+
+  section {
+    border-top: 1px solid var(--line);
+    padding: 30px 0 34px;
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px;
+  }
+  .sec-main { min-width: 0; }
+  .sec-aside { min-width: 0; }
+  @media (min-width: 1280px) {
+    section { grid-template-columns: minmax(0, 1fr) 280px; }
+  }
+  .secno { color: var(--muted); font-weight: 500; margin-right: 8px; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  .tablewrap { overflow-x: auto; margin: 14px 0; }
+  th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+  th, td { padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.num { font-variant-numeric: tabular-nums; }
+
+  .sev { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
+         padding: 1px 7px; border-radius: 9px; text-transform: uppercase; white-space: nowrap; }
+  .sev.crit { background: var(--crit-soft); color: var(--crit); }
+  .sev.high { background: var(--warn-soft); color: var(--warn); }
+  .sev.med  { background: var(--info-soft); color: var(--info); }
+  .sev.low  { background: var(--code-bg); color: var(--muted); }
+
+  .callout {
+    border-left: 3px solid var(--accent); background: var(--card);
+    padding: 10px 14px; margin: 14px 0; border-radius: 0 6px 6px 0;
+    font-size: 14px; max-width: 76ch;
+  }
+  .callout.crit { border-left-color: var(--crit); }
+  .callout b:first-child { display: block; margin-bottom: 2px; }
+
+  /* ---------- Qt mockup chrome (deliberately fixed dark: depicts the app) ---------- */
+  .qwin {
+    background: var(--qwin); color: var(--qtext); border-radius: 8px;
+    border: 1px solid #17181b; box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+    overflow: hidden; font-family: system-ui, "Segoe UI", sans-serif;
+    font-size: 11.5px; line-height: 1.35;
+  }
+  .qtitlebar {
+    display: flex; justify-content: space-between; align-items: center;
+    background: #212327; padding: 5px 10px; color: #b7bac0; font-size: 11px;
+  }
+  .qwinbtns { letter-spacing: 5px; color: #7d8188; }
+  .qmenubar { background: #26282c; padding: 3px 10px; color: #b7bac0; border-bottom: 1px solid #1c1d20; }
+  .qtabs { display: flex; background: #26282c; padding: 4px 8px 0; gap: 2px; }
+  .qtab {
+    padding: 4px 16px; border-radius: 5px 5px 0 0; background: #2c2e33;
+    color: var(--qmut); border: 1px solid #1c1d20; border-bottom: none;
+  }
+  .qtab.active { background: var(--qwin); color: var(--qtext); }
+  .qbody { display: flex; gap: 6px; padding: 8px; }
+  .qgroup {
+    border: 1px solid var(--qline); border-radius: 4px; padding: 12px 8px 8px; position: relative; margin-top: 6px;
+  }
+  .qgroup > .qgt {
+    position: absolute; top: -8px; left: 8px; background: var(--qwin);
+    padding: 0 5px; color: var(--qmut); font-size: 10.5px;
+  }
+  .qcanvas {
+    background: var(--qcanvas); color: #888; display: flex; align-items: center;
+    justify-content: center; text-align: center; border-radius: 2px;
+  }
+  .qbtn {
+    display: inline-block; background: var(--qbtn); border: 1px solid #52555b;
+    border-radius: 4px; padding: 3px 12px; color: var(--qtext); white-space: nowrap;
+  }
+  .qbtn.dis { color: #6d7076; border-color: #3d4045; background: #34373b; }
+  .qcombo { display: inline-block; background: var(--qbtn); border: 1px solid #52555b; border-radius: 4px; padding: 3px 8px; white-space: nowrap; }
+  .qcombo::after { content: " ▾"; color: var(--qmut); }
+  .qcheck::before { content: "☑ "; color: var(--qtext); }
+  .qcheck.off::before { content: "☐ "; }
+  .qprog { background: #212327; border: 1px solid var(--qline); border-radius: 3px; height: 14px; position: relative; overflow: hidden; }
+  .qprog > i { position: absolute; inset: 0 auto 0 0; background: var(--qsel); display: block; }
+  .qprog > .barber { width: 100%; background: repeating-linear-gradient(45deg, #3a70ae 0 8px, #2c5586 8px 16px); }
+  .qstatusbar {
+    display: flex; justify-content: space-between; gap: 10px; align-items: center;
+    background: #212327; border-top: 1px solid #1c1d20; padding: 4px 10px;
+    color: #b7bac0; font-size: 10.5px;
+  }
+  .qstatusbar .perm { display: flex; gap: 14px; white-space: nowrap; }
+  .qslider { display: inline-block; width: 90px; height: 4px; background: #52555b; border-radius: 2px; position: relative; vertical-align: middle; }
+  .qslider > i { position: absolute; top: -4px; left: 65%; width: 8px; height: 12px; background: #b7bac0; border-radius: 2px; }
+  .qfield { background: #212327; border: 1px solid var(--qline); border-radius: 3px; padding: 3px 8px; color: var(--qtext); }
+  .qrow { display: flex; gap: 6px; align-items: center; padding: 6px 8px; flex-wrap: wrap; }
+  .qmuted { color: var(--qmut); }
+
+  /* waterfall */
+  .wf {
+    background: #05070f; border-radius: 2px; position: relative; overflow: hidden;
+    background-image:
+      linear-gradient(90deg, transparent 24%, rgba(0,160,88,0.55) 24.6%, transparent 25.4%),
+      linear-gradient(90deg, transparent 33%, rgba(0,190,100,0.7) 33.6%, transparent 34.4%),
+      linear-gradient(90deg, transparent 42%, rgba(232,208,32,0.75) 42.6%, transparent 43.5%),
+      linear-gradient(90deg, transparent 51%, rgba(0,160,88,0.5) 51.6%, transparent 52.4%),
+      linear-gradient(90deg, transparent 60%, rgba(0,190,100,0.65) 60.6%, transparent 61.4%),
+      linear-gradient(90deg, transparent 69%, rgba(232,208,32,0.6) 69.6%, transparent 70.5%),
+      linear-gradient(180deg, rgba(0,25,80,0.5), rgba(0,10,40,0.65)),
+      radial-gradient(ellipse at 45% 30%, rgba(0,70,160,0.5), transparent 60%);
+  }
+  .wf .edge { position: absolute; top: 0; bottom: 0; border-left: 1px dashed rgba(255,255,255,0.55); }
+  .wf .cap { position: absolute; top: 4px; left: 6px; color: rgba(255,255,255,0.75); font-size: 9px; }
+  .wf .lvl { position: absolute; top: 0; bottom: 0; right: 0; width: 6px; background: #111; }
+  .wf .lvl > i { position: absolute; left: 0; right: 0; bottom: 0; height: 58%; background: linear-gradient(0deg, #29b04a, #58d060); }
+  .wf .lvl.clip > i { height: 96%; background: linear-gradient(0deg, #29b04a 60%, #e0a33c 80%, #e04030 92%); }
+
+  /* annotation badges */
+  .mark {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--crit); color: #fff; font-size: 10px; font-weight: 700;
+    font-style: normal; vertical-align: middle; margin: 0 3px; flex: none;
+  }
+  .mark.good { background: var(--ok); }
+  figure { margin: 18px 0; }
+  figcaption { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  .legend { margin: 10px 0 0; padding: 0; list-style: none; font-size: 13px; }
+  .legend li { display: flex; gap: 8px; margin: 5px 0; }
+  .legend .fileref { display: block; }
+
+  /* status log mockup */
+  .logpane {
+    background: #17181c; border-top: 1px solid #1c1d20; font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 10.5px; color: #c9ccd2; padding: 4px 0;
+  }
+  .logpane .lg { display: flex; gap: 10px; padding: 1px 10px; white-space: nowrap; }
+  .logpane .lt { color: #7d828a; flex: none; }
+  .logpane .tag { flex: none; width: 42px; font-weight: 700; }
+  .tag.rig { color: #82b4e6; } .tag.rx { color: #68c47a; } .tag.tx { color: #e0b153; }
+  .tag.err { color: #ff7d70; } .tag.app { color: #9aa3ab; }
+  .logpane .lg.errline { background: rgba(255,60,40,0.12); }
+  .loghdr { display: flex; gap: 8px; align-items: center; background: #202227; padding: 3px 8px; border-top: 1px solid #2a2c31; color: #9ba0a8; font-size: 10px; }
+
+  .banner {
+    display: flex; gap: 8px; align-items: center; background: #4a1713; color: #ffb4aa;
+    border: 1px solid #7e2b24; border-left: 4px solid #e0503f; padding: 5px 10px; font-size: 11px;
+  }
+  .banner .x { margin-left: auto; color: #d7897f; }
+  .lamp { display: inline-block; padding: 1px 8px; border-radius: 3px; font-weight: 700; font-size: 10px; }
+  .lamp.tx-on { background: #b3261e; color: #fff; }
+  .lamp.tx-off { background: #33363b; color: #7d828a; }
+
+  /* crop dialog photo placeholder */
+  .photo {
+    background:
+      radial-gradient(circle at 68% 26%, rgba(255,240,200,0.9), transparent 18%),
+      linear-gradient(180deg, #7fa8c9 0%, #a8c4d8 45%, #4c6b4e 46%, #2e4a33 100%);
+    position: relative; border-radius: 2px; overflow: hidden;
+  }
+  .photo .dim { position: absolute; background: rgba(0,0,0,0.55); }
+  .photo .croprect { position: absolute; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.5); }
+  .photo .handle { position: absolute; width: 8px; height: 8px; background: #fff; border: 1px solid #333; }
+
+  /* decision UI */
+  .q { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin: 14px 0; }
+  .q h4 { margin: 0 0 4px; }
+  .q .qwhy { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+  .opts { display: flex; flex-direction: column; gap: 8px; }
+  .opt {
+    text-align: left; background: var(--paper); color: var(--ink);
+    border: 1.5px solid var(--line); border-radius: 7px; padding: 9px 12px;
+    font: inherit; font-size: 13.5px; cursor: pointer; line-height: 1.45;
+  }
+  .opt:hover { border-color: var(--accent); }
+  .opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .opt[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .opt .ol { font-weight: 650; }
+  .opt .od { display: block; color: var(--muted); font-size: 12.5px; }
+  .rec {
+    display: inline-block; background: var(--accent); color: var(--paper);
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+    border-radius: 8px; padding: 1px 7px; margin-right: 7px; vertical-align: 1px;
+  }
+
+  .cbox { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .cbox label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 6px; font-weight: 650; }
+  .cbox textarea {
+    width: 100%; min-height: 64px; resize: vertical; border: 1px solid var(--line);
+    border-radius: 5px; background: var(--paper); color: var(--ink);
+    font: 13px/1.5 system-ui, sans-serif; padding: 7px 9px;
+  }
+  .cbox textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  #summary-block {
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px;
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; white-space: pre-wrap; overflow-x: auto;
+    user-select: all; -webkit-user-select: all;
+  }
+  .copybar { display: flex; gap: 10px; align-items: center; margin: 12px 0; flex-wrap: wrap; }
+  .btn {
+    font: 600 13.5px/1 system-ui, sans-serif; padding: 9px 16px; border-radius: 7px;
+    border: 1.5px solid var(--accent); background: var(--accent); color: var(--paper); cursor: pointer;
+  }
+  .btn.ghost { background: transparent; color: var(--accent); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #copy-status { font-size: 13px; color: var(--muted); }
+  #copy-status.sticky { color: var(--warn); font-weight: 650; }
+  .notesbox textarea { min-height: 48px; }
+  .hint { font-size: 12.5px; color: var(--muted); }
+</style>
+
+<main>
+<header class="doc">
+  <div class="eyebrow">UI/UX review · decision document</div>
+  <h1>SSTVAE native app — interface review &amp; redesign proposals</h1>
+  <div class="docmeta">
+    doc-id <b>sstvae-ui-rev-2026-08-01</b> · reviewed at commit <b>8adeaf2</b> ·
+    target: <b>native/gui/</b> (the Python GUI is frozen — bug fixes only, so every proposal here lands in the C++ app) ·
+    mockups are code-derived recreations; Qt6 is not installed on the review machine, so <code>sstvae-gui-shot</code> could not render real screenshots
+  </div>
+  <div class="spectrum" role="presentation"></div>
+</header>
+
+<!-- ================================================================ -->
+<section data-sec="1">
+<div class="sec-main">
+<h2 id="s1"><span class="secno">§1</span>Scope &amp; method</h2>
+<p>Two code explorations mapped the entire native GUI (<code>native/gui/</code>, 8 widget pairs) and the frozen Python reference (<code>sstvae/gui/</code> plus the rx/tx engines and rig controller), with every status-emission point and every user-visible text surface inventoried. Findings cite <code>file:line</code> against commit <code>8adeaf2</code>.</p>
+<p>The review covers the four requested items — <b>crop UI for non-4:3 images</b>, <b>dual-pane TX/RX</b>, <b>persistent CAT/status output</b>, <b>a scrolling status log</b> — and a comprehensive sweep beyond them (§8). Each major proposal has a current-state and proposed-state mockup and, where a real design choice is open, a decision picker in §10.</p>
+<p class="hint">Everything here is UI-layer only: no on-air format, modem, or engine-contract changes. The engines already emit nearly all the information the proposals display — the single biggest gap is that the GUI drops it.</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section data-sec="2">
+<div class="sec-main">
+<h2 id="s2"><span class="secno">§2</span>Executive summary</h2>
+<p>The app is functionally complete and the engine layer underneath is unusually well instrumented — but the presentation layer funnels <b>everything</b> through three one-line labels and ten modal dialogs. The result: safety-relevant errors are provably destroyed within a fraction of a second, a third of the state the engines publish is never displayed at all, and the operator cannot watch the band while composing a picture.</p>
+<div class="tablewrap"><table>
+  <tr><th>#</th><th>Finding</th><th>Severity</th><th>Proposal</th></tr>
+  <tr><td>F1</td><td>Non-4:3 images are silently centre-cropped; no crop UI, no indication pixels were discarded — and the editor's letterboxed preview actively suggests the opposite</td><td><span class="sev crit">critical</span></td><td>Crop dialog on load (§4)</td></tr>
+  <tr><td>F2</td><td>TX and RX are mutually exclusive tabs; you cannot watch the band or a decode while preparing a transmission</td><td><span class="sev high">high</span></td><td>Dual-pane main window (§5)</td></tr>
+  <tr><td>F3</td><td>All status is transient and mutually overwriting — including <code>"PTT OFF FAILED … unkey it manually"</code>, which is guaranteed to be replaced by <code>"Sent"</code></td><td><span class="sev crit">critical</span></td><td>Severity model: sticky banners, PTT lamp, latched clip (§6)</td></tr>
+  <tr><td>F4</td><td>No log of any kind exists — not on screen, not on disk. Ten modal dialogs and every status line vanish without record</td><td><span class="sev high">high</span></td><td>Status log dock + optional file log (§7)</td></tr>
+  <tr><td>F5–F28</td><td>24 further findings: undisplayed engine state, silent failure paths, editor gaps, small polish</td><td>mixed</td><td>Findings register (§8)</td></tr>
+</table></div>
+<h3 id="status">Implementation status</h3>
+<p class="hint">Updated 2026-08-01. All work is on the <code>imagesafari</code> fork; nothing has been proposed upstream. Each phase went through the full loop: implement → CI → adversarial review → triage → remediate as its own commit → CI again.</p>
+<div class="tablewrap"><table>
+  <tr><th>Phase</th><th>PR</th><th>State</th><th>Review outcome</th><th>What it cost to get right</th></tr>
+  <tr>
+    <td><b>1 · Observability</b><br><span class="fileref">SSTVAE-ofq</span></td>
+    <td>#1 → master</td>
+    <td><span class="sev ok" style="background:var(--ok-soft);color:var(--ok)">merged-ready</span><br>CI 11/11</td>
+    <td>11 findings<br>9 fixed · 1 rejected · 1 deferred</td>
+    <td>A <b>critical use-after-free on every app exit</b> — the new log call in <code>ReceivePanel::stop()</code> ran during child destruction, after <code>AppState</code> was already freed. Fixed structurally by controlling teardown order.</td>
+  </tr>
+  <tr>
+    <td><b>2 · Dual pane</b><br><span class="fileref">SSTVAE-u6p</span></td>
+    <td>#2 → #1</td>
+    <td><span class="sev ok" style="background:var(--ok-soft);color:var(--ok)">merged-ready</span><br>CI 11/11</td>
+    <td>9 findings<br>7 fixed · 2 deferred</td>
+    <td><code>setEnabled(false)</code> on the waterfall was a <b>visual no-op</b> — a custom-painted widget renders identically disabled, so the pause still looked like a dead receiver. And the splitter really did raise the window's minimum width 738 → 1208 px; cut to ~1015 by removing accidental label floors.</td>
+  </tr>
+  <tr>
+    <td><b>3 · Crop</b><br><span class="fileref">SSTVAE-1en</span></td>
+    <td>#3 → #2</td>
+    <td><span class="sev ok" style="background:var(--ok-soft);color:var(--ok)">merged-ready</span><br>CI 11/11</td>
+    <td>7 findings<br><b>all 7 fixed</b></td>
+    <td>The crop dialog's <b>drag moved the window opposite to the pointer</b> — the rendering moves the window, the code had the sign for panning the picture. And my pan/zoom tests had no oracle: the reviewer compiled a mirrored-axis mutant and a zoom-on-one-axis mutant and <b>both passed 60/60</b>.</td>
+  </tr>
+  <tr>
+    <td><b>4 · Polish</b><br><span class="fileref">SSTVAE-50l</span></td>
+    <td>#4 → #3</td>
+    <td><span class="sev med">in review</span><br>CI 11/11</td>
+    <td>pending</td>
+    <td>F20–F24, F27, F17. Two register items deliberately excluded and stated in the PR rather than bundled: F26 (unexposed document properties — a feature, not polish) and F14's aspect-preserving resize (changes what lands on disk; wants its own decision).</td>
+  </tr>
+</table></div>
+<p><b>27 findings across three reviews: 23 fixed, 1 rejected with measurement, 3 deferred with beads</b> — <b>SSTVAE-pk7</b> (pre-existing: the settings dialog's detached rig-test thread can emit on a destroyed dialog), <b>SSTVAE-rv9</b> (narrow-screen support below ~1015 px), <b>SSTVAE-8h6</b> (<code>fs::path</code>↔<code>QString</code> encoding on Windows — a pre-existing class, not one line).</p>
+<div class="callout"><b>What the reviews were actually worth</b>
+Three of the four phases shipped a defect that no amount of re-reading my own diff would have found, and each was caught by a reviewer that <em>ran</em> something: a use-after-free on every app exit, a <code>setEnabled(false)</code> that renders identically on a custom-painted widget, and a drag that moved the wrong way. <b>Twice the same lesson landed on me:</b> a test comparing a function to itself passes however wrong the function is — first on the crop-offset test, then again on the pan/zoom tests in the very next commit. Every fix in phases 2–4 that had a right answer is now mutation-checked: the bug is reintroduced, the test is confirmed to fail, the fix is restored.</div>
+
+<div class="callout crit"><b>The one-sentence diagnosis</b>
+The engines were built to be observable (<code>rx::Progress</code> even carries a <code>polls</code> counter specifically so "alive but hearing nothing" can be told from "wedged" — <span class="fileref">rx/engine.hpp:118-123</span>) and the GUI throws that observability away at the last inch. Most of §6–§7 is wiring that already-queued signal traffic into surfaces that persist.</div>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section data-sec="3">
+<div class="sec-main">
+<h2 id="s3"><span class="secno">§3</span>Current state — annotated mockups</h2>
+<p>Reconstructed from the layout code (<span class="fileref">main_window.cpp:29-107, rx_panel.cpp:80-144, tx_panel.cpp:226-441</span>). 1100×800 default, two tabs, three permanent status-bar labels on the right.</p>
+
+<h3>Receive tab (launch default)</h3>
+<figure>
+<div class="qwin" style="max-width:860px">
+  <div class="qtitlebar"><span>SSTVAE</span><span class="qwinbtns">– □ ×</span></div>
+  <div class="qmenubar">File</div>
+  <div class="qtabs"><span class="qtab active">Receive</span><span class="qtab">Transmit <i class="mark">1</i></span></div>
+  <div class="qbody">
+    <div style="flex:3; min-width:0">
+      <div class="qgroup"><span class="qgt">Picture</span>
+        <div class="qcanvas" style="height:150px">Nothing received yet</div>
+      </div>
+      <div style="padding:6px 2px 2px; display:flex; align-items:center">
+        <span>Receiving mode B: frame 7/32 (22%)&nbsp;&nbsp;SNR 8.3dB&nbsp;&nbsp;de KD8XYZ</span><i class="mark">2</i>
+      </div>
+      <div class="qprog" style="margin:2px"><i style="width:22%"></i></div>
+    </div>
+    <div style="flex:1; min-width:96px">
+      <div class="wf" style="height:208px">
+        <span class="cap">SSTVAE 950-2150 Hz <i class="mark" style="width:14px;height:14px">5</i></span>
+        <span class="edge" style="left:18%"></span><span class="edge" style="left:80%"></span>
+        <span class="lvl clip"><i></i></span>
+      </div>
+    </div>
+  </div>
+  <div class="qrow"><span class="qbtn">Start receiving</span><span class="qbtn dis">Stop</span><span class="qbtn dis">Save image</span><span class="qcheck">Autosave</span></div>
+  <div class="qstatusbar">
+    <span>Saved /home/jon/Pictures/rx/KD8XYZ-B-14230.png<i class="mark" style="width:14px;height:14px">3</i></span>
+    <span class="perm"><span>Callsign: N0CALL</span><span>reply timed out<i class="mark" style="width:14px;height:14px">4</i></span><span>Model ready</span></span>
+  </div>
+</div>
+<ul class="legend">
+  <li><i class="mark">1</i><span>RX and TX are tabs on one <code>QTabWidget</code> — switching to Transmit removes the waterfall, decode progress and preview from view entirely. <span class="fileref">main_window.cpp:32-36</span></span></li>
+  <li><i class="mark">2</i><span>The single status label is rebuilt from scratch every 500&nbsp;ms while listening. <code>on_error()</code> writes into the same label, so an audio failure, a crashed decode loop or a <b>failed autosave</b> is visible for at most half a second. <span class="fileref">rx_panel.cpp:342-382, 401</span></span></li>
+  <li><i class="mark">3</i><span>The only place the full save path ever appears: a 5-second <code>showMessage</code> flash — the sole timed message in the app. <span class="fileref">main_window.cpp:60-63</span></span></li>
+  <li><i class="mark">4</i><span>On a CAT failure the rig label shows the raw first line of the Hamlib exception where the frequency used to be. Identical repeats are deduplicated, and the poll interval silently backs off to 60&nbsp;s — the operator can't tell a 1-second-old error from a 59-second-old one. <span class="fileref">controller.cpp:86-88, 178, 190</span></span></li>
+  <li><i class="mark">5</i><span>Clipping is signalled only by an 8-px bar turning red for as long as the peak lasts — no text, no latch, no record. The band caption is dropped entirely when the column is narrow. <span class="fileref">waterfall.cpp:209-218, 251-256</span></span></li>
+</ul>
+<figcaption>Receive tab as built. The waterfall is a narrow vertical column (stretch 3:1 against the picture).</figcaption>
+</figure>
+
+<h3>Transmit tab</h3>
+<figure>
+<div class="qwin" style="max-width:860px">
+  <div class="qtitlebar"><span>SSTVAE</span><span class="qwinbtns">– □ ×</span></div>
+  <div class="qmenubar">File</div>
+  <div class="qtabs"><span class="qtab">Receive</span><span class="qtab active">Transmit</span></div>
+  <div class="qbody">
+    <div style="flex:3; min-width:0">
+      <div class="qcanvas" style="height:230px; position:relative">
+        <div style="position:absolute; inset:18px 40px; background:linear-gradient(180deg,#7fa8c9,#a8c4d8 45%,#4c6b4e 46%,#2e4a33); border-radius:1px; display:flex; align-items:flex-end; justify-content:flex-end">
+          <span style="font:700 13px ui-monospace,monospace; color:#fff; text-shadow:0 1px 3px #000; padding:6px 8px">N0CALL</span>
+        </div>
+        <i class="mark" style="position:absolute; top:6px; left:8px">6</i>
+      </div>
+    </div>
+    <div style="flex:1.15; min-width:150px; display:flex; flex-direction:column; gap:8px">
+      <div class="qgroup"><span class="qgt">Picture</span>
+        <div style="display:flex; flex-direction:column; gap:5px">
+          <span class="qbtn">Choose image...</span>
+          <span class="qmuted">IMG_2437.jpg <i class="mark" style="width:14px;height:14px">7</i></span>
+        </div>
+      </div>
+      <div class="qgroup"><span class="qgt">Overlay</span>
+        <div style="display:flex; flex-direction:column; gap:4px">
+          <span class="qbtn">Add text</span><span class="qbtn">Add last received image</span>
+          <span class="qbtn">Add image from file...</span><span class="qbtn">Remove selected</span>
+        </div>
+      </div>
+      <div class="qgroup"><span class="qgt">Selected item</span>
+        <div class="qmuted" style="display:flex; flex-direction:column; gap:3px">
+          <span>Text&nbsp;&nbsp;·&nbsp;&nbsp;Align&nbsp;&nbsp;·&nbsp;&nbsp;Size</span>
+          <span>Rotation&nbsp;&nbsp;·&nbsp;&nbsp;<span class="qbtn dis">Colour...</span> <i class="mark" style="width:14px;height:14px">8</i></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="qrow">
+    <span class="qmuted">Mode:</span><span class="qcombo">Mode A - 32 s</span>
+    <span class="qmuted">Level:</span><span class="qslider"><i></i></span><span>-6.0 dB</span>
+    <span class="qbtn">Send</span><span class="qbtn dis">Cancel</span>
+    <div class="qprog" style="flex:1"><i style="width:0"></i></div>
+    <span style="white-space:nowrap">PTT OFF FAILED: read timeout…<i class="mark">9</i></span>
+  </div>
+  <div class="qstatusbar">
+    <span></span>
+    <span class="perm"><span>Callsign: N0CALL</span><span>Rig: 14.2300 MHz <i class="mark" style="width:14px;height:14px">10</i></span><span>Model ready</span></span>
+  </div>
+</div>
+<ul class="legend">
+  <li><i class="mark">6</i><span>The editor letterboxes the <em>already-cropped</em> 640×480 canvas and paints the surround black — which reads as "your photo was letterboxed" when it was in fact centre-cropped. The original is never shown; the discarded region is unrecoverable in-app. <span class="fileref">overlay_editor.cpp:134-148, 195; images.cpp:35-60</span></span></li>
+  <li><i class="mark">7</i><span>Filename only — no dimensions, no original aspect, no "cropped from 4000×3000" note. <span class="fileref">tx_panel.cpp:484</span></span></li>
+  <li><i class="mark">8</i><span>The colour button's label is always literally "Colour…" — the current colour is not visible anywhere. Five <code>TextItem</code> and four <code>ImageItem</code> properties in the document model have no UI at all. <span class="fileref">tx_panel.cpp:290-367; model.hpp:45-79</span></span></li>
+  <li><i class="mark">9</i><span>The entire transmit lifecycle — nine phases, optimizer progress, and every error including <code>PTT OFF FAILED</code> and the watchdog — shares this one unstyled label at the far right of the send bar. <code>on_finished(ok)</code> then writes <code>"Sent"</code> over whatever is there. <b>The emergency message's only surviving trace is nothing at all.</b> <span class="fileref">tx_panel.cpp:637-673; tx/engine.cpp:97, 156-158</span></span></li>
+  <li><i class="mark">10</i><span>Rig polling pauses while transmitting, so the frequency label freezes for the whole over; there is no PTT/TX indicator anywhere in the app. <span class="fileref">main_window.cpp:46-49</span></span></li>
+</ul>
+<figcaption>Transmit tab as built, at the worst moment the current design permits: a PTT failure message mid-overwrite.</figcaption>
+</figure>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section data-sec="4">
+<div class="sec-main">
+<h2 id="s4"><span class="secno">§4</span>F1 — Croppable non-4:3 images</h2>
+<h3>Current behaviour</h3>
+<p><code>images::fit()</code> scale-to-covers 640×480 and centre-crops, always, silently (<span class="fileref">images.cpp:35-60</span>; identical in <span class="fileref">sstvae/images.py:64-83</span>). A 16:9 photo loses ~25% of its width; a portrait photo loses most of its height — typically the subject's head. There is no crop control, no warning, no "letterbox instead" option, and <code>grep crop</code> across both GUIs returns nothing. The only feedback is the cropped result itself, letterboxed inside the editor in a way that suggests nothing was cut.</p>
+
+<h3>Proposal: frame dialog on load, re-openable from the editor</h3>
+<p>When a chosen image isn't 4:3, open a modal <b>frame dialog</b>: the full original with a draggable, aspect-locked 4:3 window over it, dimmed outside; a zoom slider (zoom &gt; cover allows tighter crops); an optional letterbox mode for when the whole frame matters more than filling it. The result feeds the existing <code>fit</code> path as a crop offset + scale — a parameter addition to <code>images::fit</code>, no format change. A 4:3 image skips the dialog entirely. An "Adjust framing…" button in the Picture group re-opens it (the original path is kept for the session).</p>
+
+<figure>
+<div class="qwin" style="max-width:640px">
+  <div class="qtitlebar"><span>Frame picture — IMG_2437.jpg (4000×3000 → 640×480)</span><span class="qwinbtns">×</span></div>
+  <div class="qbody">
+    <div style="flex:2.2; min-width:0">
+      <div class="photo" style="height:230px">
+        <span class="dim" style="inset:0 0 auto 0; height:12%"></span>
+        <span class="dim" style="inset:auto 0 0 0; height:20%"></span>
+        <span class="croprect" style="inset:12% 6% 20% 6%"></span>
+        <span class="handle" style="top:calc(12% - 4px); left:calc(6% - 4px)"></span>
+        <span class="handle" style="top:calc(12% - 4px); right:calc(6% - 4px)"></span>
+        <span class="handle" style="bottom:calc(20% - 4px); left:calc(6% - 4px)"></span>
+        <span class="handle" style="bottom:calc(20% - 4px); right:calc(6% - 4px)"></span>
+      </div>
+      <div class="qmuted" style="padding-top:4px">Drag to reposition · corners or wheel to zoom</div>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:8px; min-width:150px">
+      <div>
+        <div class="qmuted" style="margin-bottom:3px">Zoom</div>
+        <span class="qslider" style="width:100%"><i style="left:12%"></i></span>
+      </div>
+      <span class="qcheck off">Letterbox instead of crop</span>
+      <div class="qmuted" style="font-size:10px">Letterboxing pads with black; the whole photo is sent smaller.</div>
+      <div class="qgroup" style="margin-top:2px"><span class="qgt">Will be sent as</span>
+        <div class="photo" style="height:64px; background-position:center 30%"></div>
+      </div>
+      <div style="display:flex; gap:6px; margin-top:auto; justify-content:flex-end">
+        <span class="qbtn">Cancel</span><span class="qbtn" style="border-color:#6a9fd8">OK</span>
+      </div>
+    </div>
+  </div>
+</div>
+<figcaption>Proposed frame dialog. Default position = today's centre-crop, so accepting the default is exactly current behaviour — one keypress for the operator in a hurry.</figcaption>
+</figure>
+
+<ul>
+  <li>The Picture group's label gains the honest caption: <code>IMG_2437.jpg · 4000×3000, cropped to 4:3</code>, and an <b>Adjust framing…</b> button.</li>
+  <li>Below-minimum images (&lt; 320×240, currently upscaled without a word — <span class="fileref">images.hpp:25-26</span>) get a one-line warning in the same dialog.</li>
+  <li>Open design choices — dialog vs. in-editor mode, and whether letterbox is offered — are <b>Q2/Q3</b> in §10.</li>
+</ul>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section data-sec="5">
+<div class="sec-main">
+<h2 id="s5"><span class="secno">§5</span>F2 — Dual-pane main window</h2>
+<h3>Current behaviour</h3>
+<p>RX and TX are two tabs of a <code>QTabWidget</code> (<span class="fileref">main_window.cpp:32-36</span>). Composing a picture means going blind: no waterfall, no decode progress, no incoming preview. The one cross-tab affordance is "Add last received image" on the TX side. Half-duplex interlock already exists (transmit suspends receive and rig polling — <span class="fileref">main_window.cpp:42-52</span>) but its state is invisible from the Transmit tab.</p>
+
+<h3>Proposal: RX monitor and TX composer side by side, log dock below</h3>
+<p>Replace the tab widget with a horizontal splitter: a <b>RX monitor pane</b> (waterfall, picture, decode status, last-reception card) and the <b>TX composer</b> (editor, overlay tools, send bar). Below both, the status log dock (§7). The status bar gains a PTT lamp and keeps frequency/model/callsign chips (§6). At the default 1100×800 both panes are workable; the splitter lets either dominate, and each pane collapses to a strip for small screens (that behaviour is <b>Q1</b> in §10).</p>
+
+<figure>
+<div class="qwin">
+  <div class="qtitlebar"><span>SSTVAE</span><span class="qwinbtns">– □ ×</span></div>
+  <div class="qmenubar">File&nbsp;&nbsp;&nbsp;View</div>
+  <div class="qbody">
+    <!-- RX monitor -->
+    <div style="flex:2; min-width:0; display:flex; flex-direction:column; gap:6px">
+      <div class="qgroup" style="flex:none"><span class="qgt">Receive <span class="mark good" style="width:14px;height:14px">A</span></span>
+        <div class="wf" style="height:84px">
+          <span class="cap">950–2150 Hz</span>
+          <span class="edge" style="left:18%"></span><span class="edge" style="left:80%"></span>
+          <span class="lvl"><i></i></span>
+        </div>
+        <div class="qcanvas" style="height:108px; margin-top:6px; position:relative">
+          <div style="position:absolute; inset:0; background:linear-gradient(180deg,#5b7d9b,#87a5bb 45%,#3f5c42 46%,#243a29)"></div>
+          <span style="position:absolute; right:4px; bottom:3px; font:700 10px ui-monospace,monospace; color:#fff; text-shadow:0 1px 2px #000">KD8XYZ</span>
+        </div>
+        <div style="padding-top:5px; font-size:10.5px">Receiving mode B: frame 19/32 (60%) · SNR 8.3 dB · de KD8XYZ</div>
+        <div class="qprog" style="margin-top:3px"><i style="width:60%"></i></div>
+        <div class="qmuted" style="padding-top:5px; font-size:10px">
+          Last: KD8XYZ · mode B · 8.1 dB · 14:03 · KD8XYZ-B-14230.png <span class="mark good" style="width:14px;height:14px">B</span>
+        </div>
+      </div>
+      <div class="qrow" style="padding:0">
+        <span class="qbtn">Stop</span><span class="qbtn">Save image</span><span class="qcheck">Autosave</span>
+      </div>
+    </div>
+    <!-- TX composer -->
+    <div style="flex:3; min-width:0; display:flex; flex-direction:column; gap:6px">
+      <div class="qgroup" style="flex:1"><span class="qgt">Transmit</span>
+        <div style="display:flex; gap:6px">
+          <div class="qcanvas" style="flex:2.4; height:172px; position:relative">
+            <div style="position:absolute; inset:8px 14px; background:linear-gradient(180deg,#7fa8c9,#a8c4d8 45%,#4c6b4e 46%,#2e4a33)">
+              <span style="position:absolute; right:5px; bottom:4px; font:700 11px ui-monospace,monospace; color:#fff; text-shadow:0 1px 3px #000">N0CALL</span>
+            </div>
+          </div>
+          <div style="flex:1; display:flex; flex-direction:column; gap:4px; font-size:10px; min-width:118px">
+            <span class="qbtn">Choose image...</span>
+            <span class="qmuted">IMG_2437.jpg · 4000×3000<br>cropped to 4:3 <span class="mark good" style="width:14px;height:14px">C</span></span>
+            <span class="qbtn">Adjust framing...</span>
+            <span class="qbtn">Add text</span>
+            <span class="qbtn">Add last received image</span>
+            <span class="qbtn dis">Remove selected</span>
+          </div>
+        </div>
+      </div>
+      <div class="qrow" style="padding:0">
+        <span class="qmuted">Mode:</span><span class="qcombo">A - 32 s</span>
+        <span class="qmuted">Level:</span><span class="qslider" style="width:64px"><i></i></span><span style="font-size:10px">-6.0 dB</span>
+        <span class="qbtn" style="border-color:#6a9fd8">Send</span>
+        <div class="qprog" style="flex:1"><i style="width:0"></i></div>
+        <span style="font-size:10px">Picture refined: +1.2 dB est.</span>
+      </div>
+    </div>
+  </div>
+  <!-- log dock -->
+  <div class="loghdr"><b>Status log</b><span style="margin-left:auto">Filter: <span class="qcombo" style="padding:0 5px; font-size:9.5px">All</span></span><span class="qbtn" style="padding:0 8px; font-size:9.5px">Copy</span><span style="color:#63666c">▾ collapse</span></div>
+  <div class="logpane">
+    <div class="lg"><span class="lt">14:02:03</span><span class="tag rig">rig</span><span>Rig: 14.2300 MHz (Elecraft K4)</span></div>
+    <div class="lg"><span class="lt">14:02:31</span><span class="tag rx">rx</span><span>Sync acquired: mode B · de KD8XYZ · SNR 8.3 dB</span></div>
+    <div class="lg"><span class="lt">14:03:12</span><span class="tag rx">rx</span><span>Reception complete: 32/32 frames · saved /home/jon/Pictures/rx/KD8XYZ-B-14230.png</span></div>
+    <div class="lg"><span class="lt">14:05:44</span><span class="tag tx">tx</span><span>Keying rig (PTT on)</span></div>
+    <div class="lg errline"><span class="lt">14:06:19</span><span class="tag err">ERROR</span><span>PTT OFF FAILED: read timeout — the rig may still be transmitting. Unkey it manually.</span></div>
+  </div>
+  <div class="qstatusbar">
+    <span class="lamp tx-on">TX <span class="mark good" style="width:14px;height:14px">D</span></span>
+    <span class="perm"><span>Callsign: N0CALL</span><span>Rig: 14.2300 MHz</span><span>Model ready</span></span>
+  </div>
+</div>
+<ul class="legend">
+  <li><i class="mark good">A</i><span>RX monitor always visible: waterfall as a horizontal strip (history scrolls down, band markers kept), live preview, decode line. While transmitting, this pane shows a "Paused — transmitting" overlay instead of silently freezing — half-duplex stays, but now you can see it.</span></li>
+  <li><i class="mark good">B</i><span>Last-reception card: callsign, mode, SNR, time, filename persist after the 2-second engine reset instead of vanishing (metadata is currently single-slot and unretained — <span class="fileref">rx_panel.hpp:129-131</span>). Click opens the saved file's folder.</span></li>
+  <li><i class="mark good">C</i><span>Honest picture caption + "Adjust framing…" re-opens the §4 dialog.</span></li>
+  <li><i class="mark good">D</i><span>PTT lamp: red while keyed, driven by the same <code>TxPhase</code> signal the label already receives. The frequency chip greys while polling is paused rather than freezing silently.</span></li>
+</ul>
+<figcaption>Proposed main window: RX monitor (left) · TX composer (right) · status log dock · status bar with PTT lamp. Waterfall moves from a right-hand column to a horizontal strip so the RX pane stacks cleanly at monitor width.</figcaption>
+</figure>
+
+<p class="hint">Layout note: the "Selected item" property form stays, appearing below the overlay buttons when an item is selected (elided in the mockup for space). Nothing in the TX panel loses function; it narrows from 3:1-of-window to ~60% of it.</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section data-sec="6">
+<div class="sec-main">
+<h2 id="s6"><span class="secno">§6</span>F3 — Status that persists: a severity model</h2>
+<h3>Current behaviour</h3>
+<p>Every message in the app has equal weight and no lifetime guarantee. The inventory (<span class="fileref">full audit in §3 legends</span>): TX errors are plain grey text overwritten by the next phase change (<span class="fileref">tx_panel.cpp:652, 637-639</span>); on a failed send <b>no terminal status is written at all</b> (<span class="fileref">tx_panel.cpp:654-673</span>); RX errors survive ≤ 500 ms (<span class="fileref">rx_panel.cpp:401</span>); rig errors replace the frequency readout with deduplicated raw exception text (<span class="fileref">controller.cpp:86-88</span>); the saved-file path lives 5 seconds (<span class="fileref">main_window.cpp:62</span>); clipping is an unlatched colour (<span class="fileref">waterfall.cpp:251-256</span>).</p>
+
+<h3>Proposal: three tiers, each with a rule</h3>
+<div class="tablewrap"><table>
+  <tr><th>Tier</th><th>Surface</th><th>Lifetime rule</th><th>Examples</th></tr>
+  <tr><td><b>Error</b></td><td>Coloured sticky banner across the owning pane + log entry</td><td>Stays until dismissed (×) or the same subsystem succeeds. <b>Never overwritten by routine state.</b></td><td>PTT OFF FAILED · watchdog fired · autosave failed · audio device lost · config not writable</td></tr>
+  <tr><td><b>State</b></td><td>Dedicated indicator, not shared text</td><td>Reflects current state, always visible</td><td>PTT lamp (red while keyed) · rig chip: frequency, greyed when polling paused, error-coloured with age ("CAT error · 45 s") on failure · latched CLIP badge on the level meter, click to clear · model chip with download progress</td></tr>
+  <tr><td><b>Progress</b></td><td>The existing labels/bars, unchanged</td><td>Free to overwrite each other</td><td>frame counts · "sending (32 s)" · refinement estimate</td></tr>
+</table></div>
+
+<figure>
+<div class="qwin" style="max-width:720px">
+  <div class="banner">⚠ PTT OFF FAILED: read timeout — the rig may still be transmitting. Unkey it manually.<span class="x">✕</span></div>
+  <div class="qrow">
+    <span class="qmuted">Mode:</span><span class="qcombo">A - 32 s</span>
+    <span class="qbtn">Send</span>
+    <div class="qprog" style="flex:1"><i style="width:100%"></i></div>
+    <span style="font-size:10.5px">Sent</span>
+  </div>
+  <div class="qstatusbar">
+    <span class="lamp tx-on">TX</span>
+    <span class="perm"><span>Callsign: N0CALL</span><span style="color:#ff9d92">CAT error · 45 s ago</span><span>Model: downloading 6.2/8.9 MB</span></span>
+  </div>
+</div>
+<figcaption>The same failure as §3's mockup, survivable: "Sent" and the error now coexist because they live on different tiers. The rig chip shows error age instead of hiding deduplicated repeats; the model chip finally has download progress (hook exists, passed as <code>{}</code> today — <span class="fileref">main.cpp:31, qt_fetcher.hpp:39-46</span>; the fetcher must stream to report real fractions, <span class="fileref">qt_fetcher.cpp:117-121</span>).</figcaption>
+</figure>
+
+<p>How errors surface (banner vs. status-label colouring vs. log-only) is <b>Q6</b> in §10; everything in the State row is uncontroversial and carries no open design question.</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section data-sec="7">
+<div class="sec-main">
+<h2 id="s7"><span class="secno">§7</span>F4 — Status log dock</h2>
+<h3>Current behaviour</h3>
+<p>There is no logging of any kind in the GUI or <code>core/</code> — no <code>qDebug</code>, no file, no ring buffer; the grep is empty outside the three CLI apps. Ten modal dialogs and every transient label vanish without record. When an operator asks "did it autosave? why did the rig drop? what happened while I was away?", the app has no answer.</p>
+
+<h3>Proposal: timestamped scrolling log fed by existing signals</h3>
+<p>A collapsible dock at the bottom of the main window (visible in §5's mockup): monospace, timestamped, severity-tagged lines with a source filter and a Copy button. <b>No new plumbing is needed</b> — these signals already exist and are already queued to the GUI thread:</p>
+<div class="tablewrap"><table>
+  <tr><th>Source</th><th>Signal</th><th>Log line it becomes</th></tr>
+  <tr><td>rig</td><td><code>AppState::rigStatus</code> <span class="fileref">app_state.hpp:78</span></td><td>connect / frequency change / CAT errors (now with timestamps, so dedup stops hiding repeats)</td></tr>
+  <tr><td>rx</td><td><code>ReceivePanel</code> signals <span class="fileref">rx_panel.hpp:75-84</span></td><td>sync acquired · reception complete (mode, SNR, frames, saved path) · errors</td></tr>
+  <tr><td>tx</td><td><code>TransmitPanel::stateChanged/errorOccurred/sendFinished</code> <span class="fileref">tx_panel.hpp:84-89</span></td><td>keying / sent / cancelled / failed · PTT failures · watchdog</td></tr>
+  <tr><td>app</td><td><code>modelLoaded</code>, <code>settings::LoadResult::notes</code> <span class="fileref">settings.hpp:194-198</span></td><td>model ready/failed · <b>config-file validation notes, currently discarded wholesale</b> <span class="fileref">app_state.cpp:29</span></td></tr>
+  <tr><td>opt</td><td><code>optimizerProgressed</code> + <code>SpeculativeStatus.stop</code> <span class="fileref">speculative.hpp:66-75</span></td><td>"refined +1.2 dB est. (plateau, 41 steps, 12.3 s)" — stop reason is currently dropped, so plateau and timeout look identical <span class="fileref">tx_panel.cpp:198-223</span></td></tr>
+</table></div>
+<p>Every <code>QMessageBox</code> the app shows also writes its text to the log before opening, so dismissed dialogs stop being unrecoverable. Whether the log also goes to a file on disk (invaluable for the PTT-timing shakedown against a physical radio that's still on the project's remaining list) is <b>Q5</b>; dock placement/behaviour is <b>Q4</b>.</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section data-sec="8">
+<div class="sec-main">
+<h2 id="s8"><span class="secno">§8</span>Findings register — the comprehensive sweep</h2>
+<p>Everything found, including what the four headline items don't cover. F1–F4 are the sections above; severity is impact on a real operating session.</p>
+<div class="tablewrap"><table>
+  <tr><th>#</th><th>Sev</th><th>Finding</th><th>Evidence</th><th>Fix</th></tr>
+  <tr><td>F1</td><td><span class="sev crit">crit</span></td><td>Silent centre-crop of non-4:3 images; no crop UI; editor letterbox suggests otherwise</td><td class="fileref">images.cpp:35-60</td><td>§4</td></tr>
+  <tr><td>F2</td><td><span class="sev high">high</span></td><td>TX/RX are exclusive tabs; no simultaneous view</td><td class="fileref">main_window.cpp:32-36</td><td>§5</td></tr>
+  <tr><td>F3</td><td><span class="sev crit">crit</span></td><td>"PTT OFF FAILED"/watchdog messages guaranteed destroyed by next state write; failed send leaves no terminal status</td><td class="fileref">tx/engine.cpp:97,156; tx_panel.cpp:652-673</td><td>§6</td></tr>
+  <tr><td>F4</td><td><span class="sev high">high</span></td><td>No log anywhere; 10 modal dialogs leave no record</td><td class="fileref">grep: zero hits in gui/, core/</td><td>§7</td></tr>
+  <tr><td>F5</td><td><span class="sev high">high</span></td><td>RX errors (incl. failed autosave) overwritten within 500 ms by the refresh timer</td><td class="fileref">rx_panel.cpp:342, 401</td><td>§6 error tier</td></tr>
+  <tr><td>F6</td><td><span class="sev high">high</span></td><td>CAT failure replaces frequency with raw exception; dedup hides repeats; backoff to 60 s invisible</td><td class="fileref">controller.cpp:86-88,178,190</td><td>§6 rig chip</td></tr>
+  <tr><td>F7</td><td><span class="sev high">high</span></td><td>Model download has zero progress feedback; fetcher reports 0→100 in one jump; refinement's 18 MB download likewise</td><td class="fileref">main.cpp:31; qt_fetcher.cpp:117-121</td><td>§6 model chip (needs streaming fetch)</td></tr>
+  <tr><td>F8</td><td><span class="sev high">high</span></td><td>No PTT indicator; rig chip frozen during the whole over</td><td class="fileref">main_window.cpp:46-49</td><td>§6 lamp</td></tr>
+  <tr><td>F9</td><td><span class="sev med">med</span></td><td>Saved-file path shown for 5 s, then lost (only place the full path appears)</td><td class="fileref">main_window.cpp:60-63</td><td>§7 log + §5 card</td></tr>
+  <tr><td>F10</td><td><span class="sev med">med</span></td><td>Config validation notes discarded — corrupt fields silently coerced</td><td class="fileref">app_state.cpp:29; settings.hpp:189-198</td><td>§7 app source</td></tr>
+  <tr><td>F11</td><td><span class="sev med">med</span></td><td><code>save_config()</code> swallows all exceptions — a read-only config dir gives zero feedback, ever</td><td class="fileref">app_state.cpp:125-131</td><td>§6 error tier</td></tr>
+  <tr><td>F12</td><td><span class="sev med">med</span></td><td>Clipping unlatched: 8-px colour change only</td><td class="fileref">waterfall.cpp:251-256</td><td>§6 CLIP badge</td></tr>
+  <tr><td>F13</td><td><span class="sev med">med</span></td><td>No reception history; last picture/metadata single-slot, wiped by next reception</td><td class="fileref">rx_panel.hpp:129-131</td><td>§5 card now; thumbnail strip later</td></tr>
+  <tr><td>F14</td><td><span class="sev med">med</span></td><td><code>save_size</code> resize stretches (ignores aspect); free-text field, typo silently disables resizing</td><td class="fileref">images.cpp:19-33; settings_dialog.cpp:680-682</td><td>validated field + aspect-preserving resize</td></tr>
+  <tr><td>F15</td><td><span class="sev med">med</span></td><td>Optimizer stop reason/step/time dropped — plateau and timeout indistinguishable</td><td class="fileref">tx_panel.cpp:198-223</td><td>§7 opt source</td></tr>
+  <tr><td>F16</td><td><span class="sev med">med</span></td><td>Refinement result text erased the moment transmit starts</td><td class="fileref">tx_panel.cpp:637</td><td>§7 log line</td></tr>
+  <tr><td>F17</td><td><span class="sev med">med</span></td><td>SNR NaN renders as a silently missing field rather than "—"</td><td class="fileref">rx/engine.cpp:162-167 (native)</td><td>explicit placeholder</td></tr>
+  <tr><td>F18</td><td><span class="sev med">med</span></td><td>No numeric frequency readout; <code>OnFrequency</code> callback is an empty lambda</td><td class="fileref">app_state.cpp:36</td><td>§6 rig chip</td></tr>
+  <tr><td>F19</td><td><span class="sev med">med</span></td><td>Waterfall: fixed −95/−20 dB range, no gain control; caption dropped when narrow</td><td class="fileref">waterfall.cpp:32-33,209-218</td><td>auto-gain or slider; §5's strip is wide enough for the caption</td></tr>
+  <tr><td>F20</td><td><span class="sev low">low</span></td><td>Colour button shows no swatch of the current colour</td><td class="fileref">tx_panel.cpp:290-367</td><td>swatch on button</td></tr>
+  <tr><td>F21</td><td><span class="sev low">low</span></td><td>"Add last received image" enabled even when no RX image exists</td><td class="fileref">tx_panel.cpp:279-281</td><td>enable on first <code>imageReceived</code></td></tr>
+  <tr><td>F22</td><td><span class="sev low">low</span></td><td>No drag-and-drop, no paste, no recent-images list</td><td class="fileref">no dropEvent in gui/</td><td>accept drops on editor</td></tr>
+  <tr><td>F23</td><td><span class="sev low">low</span></td><td>Picture label: filename only, no dimensions/crop note</td><td class="fileref">tx_panel.cpp:484</td><td>§4 caption</td></tr>
+  <tr><td>F24</td><td><span class="sev low">low</span></td><td>ALC guidance is tooltip-only (invisible until hovered)</td><td class="fileref">tx_panel.cpp:397-401</td><td>one-line hint near slider or in Settings</td></tr>
+  <tr><td>F25</td><td><span class="sev low">low</span></td><td>Editor: no undo, no Delete key, no arrow-nudge, no z-order, rotation spinbox-only</td><td class="fileref">overlay_editor.cpp (no keyPressEvent)</td><td>Delete + nudge first; undo later</td></tr>
+  <tr><td>F26</td><td><span class="sev low">low</span></td><td>Document model properties with no UI: stroke, font, anchor, line-spacing, opacity, border</td><td class="fileref">model.hpp:45-79</td><td>expose incrementally</td></tr>
+  <tr><td>F27</td><td><span class="sev low">low</span></td><td>No zoom/1:1/open-folder on the received picture; no Help/About menu</td><td class="fileref">rx_panel.cpp:408; main_window.cpp:72-96</td><td>context menu; About dialog</td></tr>
+  <tr><td>F28</td><td><span class="sev low">low</span></td><td><code>polls</code> counter (alive-vs-wedged) never displayed; <code>last_decode_s</code> never displayed</td><td class="fileref">rx/engine.hpp:118-123</td><td>§7 log (debug filter)</td></tr>
+</table></div>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section data-sec="9">
+<div class="sec-main">
+<h2 id="s9"><span class="secno">§9</span>Phasing &amp; effort</h2>
+<p>Ordered so each phase is independently shippable and the riskiest layout change comes after the observability that makes it easy to verify. (Phase order is <b>Q7</b>.)</p>
+<div class="tablewrap"><table>
+  <tr><th>Phase</th><th>Contents</th><th>Effort</th><th>Why this order</th></tr>
+  <tr><td><b>1 · Observability</b></td><td>Log dock (§7) + severity model (§6): banners, PTT lamp, rig chip, latched clip, model download progress. Fixes F3–F12, F15–F18, F28.</td><td>Small–medium. Signals exist; the only real plumbing is streaming the fetcher and surfacing <code>LoadResult::notes</code>.</td><td>Highest safety value per line; also instruments the app for the still-pending on-air PTT shakedown.</td></tr>
+  <tr><td><b>2 · Dual pane</b></td><td>§5 layout: splitter, RX monitor strip, last-reception card, waterfall to horizontal.</td><td>Medium. Interlock logic already exists; this is widget rearrangement + the paused overlay.</td><td>Benefits from Phase 1's log while debugging layout regressions.</td></tr>
+  <tr><td><b>3 · Crop</b></td><td>§4 frame dialog + <code>images::fit</code> offset/zoom/letterbox params + honest caption. Fixes F1, F14, F23.</td><td>Medium. One new dialog, one pure-function change (parity-testable against Python if <code>fit_image</code> gains the same params).</td><td>Self-contained; touches <code>core/images</code> which both engines share, so it gets its own tests.</td></tr>
+  <tr><td><b>4 · Polish batch</b></td><td>F20–F27: swatch, drops, Delete/nudge, zoom, About, enable-states.</td><td>Small each; batchable.</td><td>Anytime; good between larger items.</td></tr>
+</table></div>
+<p class="hint">Note for Phase 3: <code>images::fit</code> is also called defensively in <code>TxEngine::prepare</code>, and the same cover-crop exists in Python (<span class="fileref">sstvae/images.py:64-83</span>) — the crop parameters must flow through the one call in the GUI path, leaving the parameterless default identical to today's behaviour everywhere else (fix-every-copy rule).</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section data-sec="10">
+<div class="sec-main">
+<h2 id="s10"><span class="secno">§10</span>Decisions &amp; feedback</h2>
+<div class="callout"><b>Settled 2026-08-01 — all seven questions answered (recorded on SSTVAE-9c8)</b>
+Q1 <code>split-full</code> · Q2 <code>dialog-on-load</code> · Q3 <code>no</code> (crop only — the frame dialog loses its letterbox toggle) · Q4 <code>bottom-dock</code> · Q5 <code>rotating-file</code> · Q6 <code>banner</code> · Q7 <code>observability-first</code>. Every pick matched the recommendation.
+<br><br><b>Style amendment:</b> keep the look traditional and Qt-native — no styled chips, pills or badge colouring; plain Qt widgets with palette colours at most. The mockups above are <em>illustrative of information placement, not of visual style</em>; the implementation follows the codebase's existing QPalette-only rule. Functionality, not style enhancements.
+<br><br>The pickers below stay live for revising any decision — re-paste the block if you change one.</div>
+<p>Click to pick (click again to clear). Your choices, notes and per-section comments assemble into the copy block at the bottom — paste that whole block back into the session. Everything is saved locally in your browser between sittings.</p>
+
+<div class="q" data-qkey="layout">
+  <h4 id="q-layout">Q1 · Main-window arrangement</h4>
+  <p class="qwhy">How RX and TX share the window (§5).</p>
+  <div class="opts" role="group" aria-labelledby="q-layout">
+    <button type="button" class="opt" data-value="split-full" data-label="Full side-by-side split, both panes complete">
+      <span class="rec">rec</span><span class="ol">Full side-by-side split</span>
+      <span class="od">Both panes fully functional, splitter-adjustable, either collapsible. The §5 mockup. Most flexible; slightly busier default view.</span>
+    </button>
+    <button type="button" class="opt" data-value="rx-strip" data-label="Compact RX monitor strip beside a dominant TX composer">
+      <span class="ol">RX monitor strip</span>
+      <span class="od">TX composer dominates; RX is a fixed narrow strip (waterfall + thumbnail + one status line) that expands on click. Calmer, but expanding RX still hides TX.</span>
+    </button>
+    <button type="button" class="opt" data-value="keep-tabs-plus" data-label="Keep tabs, add persistent RX summary bar">
+      <span class="ol">Keep tabs + RX summary bar</span>
+      <span class="od">Smallest change: tabs stay, a thin always-visible bar shows waterfall-mini + decode line. Doesn't really deliver "prepare TX while seeing RX".</span>
+    </button>
+  </div>
+</div>
+
+<div class="q" data-qkey="crop-ux">
+  <h4 id="q-crop">Q2 · Crop interaction</h4>
+  <p class="qwhy">Where the framing control lives (§4).</p>
+  <div class="opts" role="group" aria-labelledby="q-crop">
+    <button type="button" class="opt" data-value="dialog-on-load" data-label="Modal frame dialog on load, re-openable">
+      <span class="rec">rec</span><span class="ol">Dialog on load</span>
+      <span class="od">Opens automatically for non-4:3 images; Enter accepts today's centre-crop. Discoverable, keeps the editor modeless, one keypress in a hurry.</span>
+    </button>
+    <button type="button" class="opt" data-value="editor-mode" data-label="Inline crop mode inside the overlay editor">
+      <span class="ol">Inline editor mode</span>
+      <span class="od">A "Frame" toggle puts the editor into crop mode on the original. No modal, but adds a second editing mode to a currently modeless editor.</span>
+    </button>
+    <button type="button" class="opt" data-value="auto-plus-handles" data-label="Auto-crop silently, adjust via pan handle afterwards">
+      <span class="ol">Auto-crop + adjust handle</span>
+      <span class="od">Keep current behaviour but let the base image be dragged to re-frame, with a caption noting the crop. Least friction, least discoverable.</span>
+    </button>
+  </div>
+</div>
+
+<div class="q" data-qkey="letterbox">
+  <h4 id="q-letterbox">Q3 · Offer letterbox as an alternative to cropping?</h4>
+  <p class="qwhy">Padding with black sends the whole photo smaller; some pictures (documents, full scenes) matter edge-to-edge.</p>
+  <div class="opts" role="group" aria-labelledby="q-letterbox">
+    <button type="button" class="opt" data-value="yes" data-label="Yes — letterbox toggle in the frame dialog">
+      <span class="rec">rec</span><span class="ol">Yes, as a toggle</span>
+      <span class="od">One checkbox in the frame dialog (§4 mockup). Cheap, and the airtime is spent either way.</span>
+    </button>
+    <button type="button" class="opt" data-value="no" data-label="No — crop only">
+      <span class="ol">Crop only</span>
+      <span class="od">Simpler dialog; operators who want letterboxing pre-pad outside the app.</span>
+    </button>
+  </div>
+</div>
+
+<div class="q" data-qkey="log-pane">
+  <h4 id="q-logpane">Q4 · Status log placement</h4>
+  <p class="qwhy">Where the §7 log lives.</p>
+  <div class="opts" role="group" aria-labelledby="q-logpane">
+    <button type="button" class="opt" data-value="bottom-dock" data-label="Collapsible bottom dock, open by default (~5 lines)">
+      <span class="rec">rec</span><span class="ol">Collapsible bottom dock</span>
+      <span class="od">Open by default at ~5 lines, collapses to a single most-recent-line strip. Always discoverable; errors auto-expand it.</span>
+    </button>
+    <button type="button" class="opt" data-value="toggle-window" data-label="Separate window toggled from a View menu">
+      <span class="ol">Separate log window</span>
+      <span class="od">Main window stays minimal; log is out of sight until summoned — which is how errors get missed.</span>
+    </button>
+    <button type="button" class="opt" data-value="fixed" data-label="Fixed always-visible pane">
+      <span class="ol">Fixed pane</span>
+      <span class="od">Never collapsible. Maximum visibility, costs ~90 px of picture height permanently.</span>
+    </button>
+  </div>
+</div>
+
+<div class="q" data-qkey="log-file">
+  <h4 id="q-logfile">Q5 · Log to disk as well?</h4>
+  <p class="qwhy">A session file makes bug reports and the pending on-air PTT shakedown reviewable after the fact. Hamlib's own trace switch (<code>SSTVAE_HAMLIB_DEBUG</code>) already exists for operators' reports — this would be the app-level counterpart.</p>
+  <div class="opts" role="group" aria-labelledby="q-logfile">
+    <button type="button" class="opt" data-value="rotating-file" data-label="Yes — rotating file in the config dir">
+      <span class="rec">rec</span><span class="ol">Yes, rotating file</span>
+      <span class="od">Current session + a few rotations in the platform data dir; path shown in the log header.</span>
+    </button>
+    <button type="button" class="opt" data-value="session-only" data-label="No — in-memory session log only">
+      <span class="ol">Session only</span>
+      <span class="od">Copy button is the only export. Simpler; nothing written to disk.</span>
+    </button>
+  </div>
+</div>
+
+<div class="q" data-qkey="error-surface">
+  <h4 id="q-errsurface">Q6 · How errors demand attention</h4>
+  <p class="qwhy">The Error tier in §6 — what happens above the log entry.</p>
+  <div class="opts" role="group" aria-labelledby="q-errsurface">
+    <button type="button" class="opt" data-value="banner" data-label="Sticky banner on the owning pane + log">
+      <span class="rec">rec</span><span class="ol">Sticky banner + log</span>
+      <span class="od">Coloured banner across the owning pane until dismissed or the subsystem recovers (§6 mockup). Impossible to miss; costs one row while shown.</span>
+    </button>
+    <button type="button" class="opt" data-value="sticky-label" data-label="Colour-coded sticky status labels + log">
+      <span class="ol">Sticky coloured label</span>
+      <span class="od">Keep the existing labels but errors turn them red and pin them until the next user action. Smaller change; easier to overlook, and shares space with progress text.</span>
+    </button>
+    <button type="button" class="opt" data-value="log-only" data-label="Log only, auto-expand the dock on error">
+      <span class="ol">Log only</span>
+      <span class="od">The dock auto-expands and the line flashes. Minimal chrome; weakest for walk-away scenarios like a stuck PTT.</span>
+    </button>
+  </div>
+</div>
+
+<div class="q" data-qkey="phase-1">
+  <h4 id="q-phase">Q7 · What to build first</h4>
+  <p class="qwhy">§9 proposes observability → dual pane → crop. Reorder if one pain point dominates your actual operating.</p>
+  <div class="opts" role="group" aria-labelledby="q-phase">
+    <button type="button" class="opt" data-value="observability-first" data-label="Phase 1 = log + severity model (as proposed)">
+      <span class="rec">rec</span><span class="ol">Observability first</span>
+      <span class="od">Log dock + banners + PTT lamp. Fixes both critical status findings and instruments everything after it.</span>
+    </button>
+    <button type="button" class="opt" data-value="layout-first" data-label="Phase 1 = dual-pane layout">
+      <span class="ol">Dual pane first</span>
+      <span class="od">The most visible workflow change lands immediately; status fixes follow.</span>
+    </button>
+    <button type="button" class="opt" data-value="crop-first" data-label="Phase 1 = crop dialog">
+      <span class="ol">Crop first</span>
+      <span class="od">Most self-contained; right choice if mangled portraits are the daily annoyance.</span>
+    </button>
+  </div>
+</div>
+
+<div class="cbox notesbox" style="margin:18px 0">
+  <label for="free-notes">General notes</label>
+  <textarea id="free-notes" placeholder="Anything not covered by a picker or a section comment…"></textarea>
+</div>
+
+<h3>Copy block</h3>
+<p class="hint">One click selects the whole block. Paste it back into the Claude session verbatim.</p>
+<div class="copybar">
+  <button type="button" class="btn" id="copy-btn">Copy for chat</button>
+  <button type="button" class="btn ghost" id="clear-btn">Clear all</button>
+  <span id="copy-status" role="status"></span>
+</div>
+<div id="summary-block" tabindex="0"></div>
+</div>
+</section>
+
+<footer style="padding:26px 0 0; color:var(--muted); font-size:12.5px">
+  <div class="spectrum" role="presentation"></div>
+  Prepared 2026-08-01 · sources: native/gui/, native/core/, sstvae/gui/, sstvae/rx/, sstvae/tx/ at commit 8adeaf2 · mockups are code-derived, not screenshots.
+</footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var DOC_ID = "sstvae-ui-rev-2026-08-01";
+  var LS_KEY = "sstvae-ui-review:" + DOC_ID;
+
+  var state = { picks: {}, comments: {}, notes: "" };
+
+  function loadState() {
+    try {
+      var raw = window.localStorage.getItem(LS_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          state.picks = parsed.picks || {};
+          state.comments = parsed.comments || {};
+          state.notes = parsed.notes || "";
+        }
+      }
+    } catch (e) { /* storage unavailable — run without persistence */ }
+  }
+  function saveState() {
+    try { window.localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+    catch (e) { /* ignore */ }
+  }
+
+  /* ---- decision pickers ---- */
+  var questions = [];
+  function initPickers() {
+    var qs = document.querySelectorAll(".q[data-qkey]");
+    Array.prototype.forEach.call(qs, function (q) {
+      var key = q.getAttribute("data-qkey");
+      var buttons = q.querySelectorAll("button.opt");
+      questions.push({ key: key, el: q });
+      Array.prototype.forEach.call(buttons, function (btn) {
+        btn.setAttribute("aria-pressed", state.picks[key] === btn.getAttribute("data-value") ? "true" : "false");
+        btn.addEventListener("click", function () {
+          var val = btn.getAttribute("data-value");
+          if (state.picks[key] === val) {
+            delete state.picks[key];
+          } else {
+            state.picks[key] = val;
+          }
+          Array.prototype.forEach.call(buttons, function (b) {
+            b.setAttribute("aria-pressed", state.picks[key] === b.getAttribute("data-value") ? "true" : "false");
+          });
+          saveState();
+          renderBlock();
+        });
+      });
+    });
+  }
+
+  /* ---- per-section comment boxes, generated from headings ---- */
+  var sections = [];
+  function initComments() {
+    var secs = document.querySelectorAll("section[data-sec]");
+    Array.prototype.forEach.call(secs, function (sec) {
+      var id = sec.getAttribute("data-sec");
+      var h2 = sec.querySelector("h2");
+      if (!h2) return;
+      var titleText = h2.textContent.replace(/^\s*§\d+\s*/, "").trim();
+      sections.push({ id: id, title: titleText });
+
+      var aside = document.createElement("div");
+      aside.className = "sec-aside";
+      var box = document.createElement("div");
+      box.className = "cbox";
+      var label = document.createElement("label");
+      var taId = "comment-sec-" + id;
+      label.setAttribute("for", taId);
+      label.textContent = "Comments on §" + id;
+      var ta = document.createElement("textarea");
+      ta.id = taId;
+      ta.placeholder = "Notes on “" + titleText + "”…";
+      ta.value = state.comments[id] || "";
+      ta.addEventListener("input", function () {
+        if (ta.value.trim()) { state.comments[id] = ta.value; }
+        else { delete state.comments[id]; }
+        saveState();
+        renderBlock();
+      });
+      box.appendChild(label);
+      box.appendChild(ta);
+      aside.appendChild(box);
+      sec.appendChild(aside);
+    });
+  }
+
+  /* ---- free notes ---- */
+  function initNotes() {
+    var ta = document.getElementById("free-notes");
+    ta.value = state.notes || "";
+    ta.addEventListener("input", function () {
+      state.notes = ta.value;
+      saveState();
+      renderBlock();
+    });
+  }
+
+  /* ---- summary block ---- */
+  function labelFor(qEl, value) {
+    var btn = qEl.querySelector('button.opt[data-value="' + value + '"]');
+    return btn ? (btn.getAttribute("data-label") || value) : value;
+  }
+  function buildBlock() {
+    var lines = [];
+    lines.push("=== DECISIONS · " + DOC_ID + " ===");
+    var answered = 0;
+    questions.forEach(function (q) {
+      var v = state.picks[q.key];
+      if (v) {
+        answered += 1;
+        lines.push(q.key + ":  " + v + "  — " + labelFor(q.el, v));
+      } else {
+        lines.push(q.key + ":  (undecided)");
+      }
+    });
+    lines.push("");
+    lines.push("notes: " + (state.notes.trim() ? state.notes.trim().replace(/\n/g, " / ") : "(none)"));
+    lines.push("");
+    lines.push("--- section comments ---");
+    var nComments = 0;
+    sections.forEach(function (s) {
+      var c = state.comments[s.id];
+      if (c && c.trim()) {
+        nComments += 1;
+        lines.push("§" + s.id + "  " + s.title);
+        c.trim().split("\n").forEach(function (ln) {
+          lines.push("    > " + ln);
+        });
+      }
+    });
+    if (nComments === 0) lines.push("(no section comments)");
+    lines.push("=== END (" + answered + "/" + questions.length + " answered · " + nComments + " comment" + (nComments === 1 ? "" : "s") + ") ===");
+    return lines.join("\n");
+  }
+  function renderBlock() {
+    document.getElementById("summary-block").textContent = buildBlock();
+  }
+
+  /* ---- copy: three tiers, failure is never quiet ---- */
+  function setStatus(msg, sticky) {
+    var el = document.getElementById("copy-status");
+    el.textContent = msg;
+    el.className = sticky ? "sticky" : "";
+    if (!sticky) {
+      window.clearTimeout(setStatus._t);
+      setStatus._t = window.setTimeout(function () {
+        if (el.className !== "sticky") el.textContent = "";
+      }, 4000);
+    }
+  }
+  function selectBlock() {
+    var block = document.getElementById("summary-block");
+    var range = document.createRange();
+    range.selectNodeContents(block);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  function copyTier2(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+  function copyBlock() {
+    var text = buildBlock();
+    var finishOk = function () { setStatus("Copied ✓", false); };
+    var tier2 = function () {
+      if (copyTier2(text)) { finishOk(); }
+      else {
+        selectBlock();
+        setStatus("Copy blocked by the browser — the block is selected: press Ctrl+C / ⌘C now.", true);
+      }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        navigator.clipboard.writeText(text).then(finishOk, tier2);
+      } catch (e) { tier2(); }
+    } else {
+      tier2();
+    }
+  }
+
+  function clearAll() {
+    if (!window.confirm("Clear all picks, notes and section comments? Typed text will be lost.")) return;
+    state = { picks: {}, comments: {}, notes: "" };
+    saveState();
+    document.getElementById("free-notes").value = "";
+    Array.prototype.forEach.call(document.querySelectorAll("button.opt"), function (b) {
+      b.setAttribute("aria-pressed", "false");
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".sec-aside textarea"), function (t) {
+      t.value = "";
+    });
+    renderBlock();
+    setStatus("Cleared.", false);
+  }
+
+  loadState();
+  initPickers();
+  initComments();
+  initNotes();
+  renderBlock();
+  document.getElementById("copy-btn").addEventListener("click", copyBlock);
+  document.getElementById("clear-btn").addEventListener("click", clearAll);
+})();
+</script>
