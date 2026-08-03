@@ -1,0 +1,799 @@
+<title>SSTVAE — Option A layout: three ways to place the transmit tools</title>
+<style>
+  :root {
+    --paper: #f2f1ee;
+    --panel: #e8e7e3;
+    --ink: #181b1e;
+    --ink-soft: #565d63;
+    --ink-faint: #858c92;
+    --rule: #cbc9c3;
+    --rule-soft: #dedcd6;
+    --accent: #33637f;
+    --accent-soft: #dce7ee;
+    --brass: #85652c;
+    --brass-soft: #f0e6d2;
+    --screen: #0d1218;
+    --screen-ink: #6e7d8a;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0f1317;
+      --panel: #171c21;
+      --ink: #dfe4e8;
+      --ink-soft: #98a2aa;
+      --ink-faint: #6b757d;
+      --rule: #2a3239;
+      --rule-soft: #1f262c;
+      --accent: #7fb2ce;
+      --accent-soft: #1a2831;
+      --brass: #c4a35f;
+      --brass-soft: #2a2317;
+      --screen: #070a0d;
+      --screen-ink: #5b6a77;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0f1317; --panel: #171c21; --ink: #dfe4e8; --ink-soft: #98a2aa;
+    --ink-faint: #6b757d; --rule: #2a3239; --rule-soft: #1f262c;
+    --accent: #7fb2ce; --accent-soft: #1a2831; --brass: #c4a35f;
+    --brass-soft: #2a2317; --screen: #070a0d; --screen-ink: #5b6a77;
+  }
+  :root[data-theme="light"] {
+    --paper: #f2f1ee; --panel: #e8e7e3; --ink: #181b1e; --ink-soft: #565d63;
+    --ink-faint: #858c92; --rule: #cbc9c3; --rule-soft: #dedcd6; --accent: #33637f;
+    --accent-soft: #dce7ee; --brass: #85652c; --brass-soft: #f0e6d2;
+    --screen: #0d1218; --screen-ink: #6e7d8a;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 15px;
+    line-height: 1.62;
+    margin: 0;
+    padding: 0 1.25rem 6rem;
+  }
+  .sheet { max-width: 1180px; margin: 0 auto; }
+  p, li { max-width: 66ch; }
+  h1, h2, h3 { text-wrap: balance; line-height: 1.24; }
+  h1 { font-size: 1.75rem; margin: 2.5rem 0 0.35rem; letter-spacing: -0.01em; }
+  h2 {
+    font-size: 1.12rem; margin: 0 0 0.9rem;
+    padding-bottom: 0.4rem; border-bottom: 1px solid var(--rule);
+  }
+  h3 { font-size: 0.95rem; margin: 1.6rem 0 0.5rem; }
+  a { color: var(--accent); }
+  code, .k { font-family: var(--mono); font-size: 0.88em; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--ink-faint); margin: 0;
+  }
+  .lede { color: var(--ink-soft); font-size: 1.02rem; margin: 0.6rem 0 0; }
+  header.top { border-bottom: 2px solid var(--ink); padding-bottom: 1.5rem; }
+
+  section { margin: 3rem 0 0; }
+  @media (min-width: 1080px) {
+    section {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 15rem;
+      column-gap: 2rem;
+      align-items: start;
+    }
+    section > :not(.note) { grid-column: 1; }
+    section > .note { grid-column: 2; grid-row: 2 / span 99; position: sticky; top: 1rem; }
+    section > h2 { grid-column: 1 / -1; }
+  }
+
+  /* ---- wireframes ---------------------------------------------------- */
+  .frame { margin: 1.1rem 0 0.4rem; overflow-x: auto; }
+  .win {
+    min-width: 460px;
+    border: 1px solid var(--rule);
+    background: var(--panel);
+    border-radius: 3px;
+    font-size: 0.72rem;
+    font-family: var(--mono);
+    color: var(--ink-soft);
+  }
+  .win .bar {
+    padding: 0.3rem 0.55rem; border-bottom: 1px solid var(--rule);
+    color: var(--ink-faint); letter-spacing: 0.06em;
+  }
+  .win .body { padding: 0.5rem; display: flex; flex-direction: column; gap: 0.45rem; }
+  .fall {
+    background: var(--screen); color: var(--screen-ink);
+    padding: 0.9rem 0.5rem; text-align: center; border-radius: 2px;
+    letter-spacing: 0.1em; font-size: 0.66rem;
+  }
+  .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
+  .panes.uneven { grid-template-columns: 4fr 6fr; }
+  .pane { border: 1px solid var(--rule); border-radius: 2px; padding: 0.4rem; }
+  .pane > .cap {
+    font-size: 0.63rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 0.35rem;
+  }
+  .pic {
+    background: var(--screen); color: var(--screen-ink);
+    aspect-ratio: 4 / 3; display: grid; place-items: center;
+    border-radius: 2px; font-size: 0.66rem; letter-spacing: 0.08em;
+    position: relative;
+  }
+  .pic.tall { aspect-ratio: auto; min-height: 150px; }
+  .row { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.35rem; }
+  .btn-w {
+    border: 1px solid var(--rule); border-radius: 2px; padding: 0.16rem 0.4rem;
+    background: var(--paper); font-size: 0.64rem; white-space: nowrap;
+  }
+  .btn-w.accent { border-color: var(--accent); color: var(--accent); }
+  .side { display: grid; grid-template-columns: 1fr auto; gap: 0.4rem; }
+  .col-tools { display: flex; flex-direction: column; gap: 0.25rem; min-width: 82px; }
+  .dock {
+    border: 1px solid var(--rule); border-radius: 2px; padding: 0.35rem 0.5rem;
+    background: var(--paper);
+  }
+  .float {
+    position: absolute; top: 6px; left: 6px; display: flex; gap: 3px;
+    background: var(--panel); border: 1px solid var(--rule);
+    border-radius: 2px; padding: 3px;
+  }
+  .popover {
+    position: absolute; right: 8px; bottom: 8px; background: var(--panel);
+    border: 1px solid var(--accent); border-radius: 2px; padding: 4px 6px;
+    font-size: 0.62rem; color: var(--ink-soft);
+  }
+  .tabs-w { display: flex; gap: 2px; }
+  .tab-w {
+    border: 1px solid var(--rule); border-bottom: none; padding: 0.15rem 0.5rem;
+    border-radius: 2px 2px 0 0; font-size: 0.64rem; background: var(--paper);
+  }
+  .tab-w.off { background: transparent; color: var(--ink-faint); }
+  figcaption {
+    font-size: 0.78rem; color: var(--ink-faint); margin-top: 0.4rem;
+    max-width: 66ch;
+  }
+  figure { margin: 0; }
+
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 0.64rem;
+    letter-spacing: 0.08em; text-transform: uppercase; padding: 0.1rem 0.4rem;
+    border: 1px solid var(--rule); border-radius: 2px; color: var(--ink-faint);
+    vertical-align: 2px; margin-left: 0.5rem;
+  }
+  .tag.now { border-color: var(--brass); color: var(--brass); background: var(--brass-soft); }
+
+  table { border-collapse: collapse; font-size: 0.88rem; margin: 1rem 0; }
+  th, td { text-align: left; padding: 0.35rem 0.9rem 0.35rem 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  th { font-weight: 600; color: var(--ink-soft); font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* ---- decisions ------------------------------------------------------ */
+  .q { margin: 1.6rem 0 0; padding: 1rem 1.1rem; border: 1px solid var(--rule); border-radius: 3px; background: var(--panel); }
+  .q .qtext { font-weight: 600; margin: 0 0 0.15rem; }
+  .q .qhint { margin: 0 0 0.8rem; font-size: 0.86rem; color: var(--ink-soft); }
+  .opts { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+  .opt {
+    font: inherit; font-size: 0.86rem; text-align: left; cursor: pointer;
+    background: var(--paper); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 2px;
+    padding: 0.45rem 0.7rem; line-height: 1.35;
+  }
+  .opt:hover { border-color: var(--accent); }
+  .opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .opt[aria-pressed="true"] {
+    border-color: var(--accent); background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .opt .kk { display: block; font-family: var(--mono); font-size: 0.7rem; color: var(--ink-faint); }
+  .rec {
+    font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.1em;
+    text-transform: uppercase; border: 1px solid var(--accent); color: var(--accent);
+    border-radius: 2px; padding: 0 0.25rem; margin-left: 0.4rem;
+  }
+
+  .settled {
+    margin: 1.4rem 0 0; padding: 0.9rem 1.1rem;
+    border: 1px solid var(--accent); border-left-width: 3px;
+    border-radius: 2px; background: var(--accent-soft); max-width: 66ch;
+  }
+  .settled-h {
+    margin: 0 0 0.5rem; font-family: var(--mono); font-size: 0.7rem;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent);
+  }
+  .settled ul { margin: 0; padding-left: 1.1rem; }
+  .settled li { font-size: 0.92rem; }
+  .settled-n { margin: 0.6rem 0 0; font-size: 0.84rem; color: var(--ink-soft); }
+
+  .note { margin-top: 1rem; }
+  .note label {
+    display: block; font-family: var(--mono); font-size: 0.64rem;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint);
+    margin-bottom: 0.3rem;
+  }
+  textarea {
+    width: 100%; box-sizing: border-box; font: inherit; font-size: 0.85rem;
+    background: var(--paper); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 2px; padding: 0.45rem 0.55rem;
+    resize: vertical; min-height: 3.6rem;
+  }
+  textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  #out {
+    white-space: pre-wrap; user-select: all; -webkit-user-select: all;
+    font-family: var(--mono); font-size: 0.76rem; line-height: 1.5;
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 3px;
+    padding: 0.9rem 1rem; margin: 0.8rem 0 0; overflow-x: auto;
+  }
+  .actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.9rem; }
+  .push {
+    font: inherit; font-size: 0.88rem; cursor: pointer; padding: 0.42rem 0.9rem;
+    border-radius: 2px; border: 1px solid var(--accent);
+    background: var(--accent); color: var(--paper);
+  }
+  .push.ghost { background: transparent; color: var(--accent); }
+  .push:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  #say { font-size: 0.84rem; color: var(--ink-soft); }
+  #say.act { color: var(--ink); font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="sheet">
+
+<header class="top">
+  <p class="eyebrow">SSTVAE · native app · decision sheet · 2026-08-03</p>
+  <h1>Option A: two equal 4:3 panes — and where the transmit tools go</h1>
+  <p class="lede">
+    You picked option A a while back and I did not build it; the tabs work landed on the
+    old layout instead. This is the piece that stalled A when I parked it, drawn three ways
+    so you can pick one. Everything else about A is settled and not re-opened here.
+  </p>
+  <div class="settled">
+    <p class="settled-h">Settled 2026-08-03 — building this now, as <span class="k">SSTVAE-9c8.1</span></p>
+    <ul>
+      <li><strong>A1</strong>, tools in a band below the canvas.</li>
+      <li><strong>Panes locked equal</strong>, no draggable handle.</li>
+      <li><strong>Waterfall stays above the tabs</strong>, visible in both layouts.</li>
+    </ul>
+    <p class="settled-n">
+      The pickers below are still live — change one and paste the block again if you want to
+      revise. The mockups are kept as drawn rather than trimmed to the winner, so the
+      alternatives stay readable if this comes back.
+    </p>
+  </div>
+</header>
+
+<section data-sec id="s-settled">
+  <h2>What is already decided</h2>
+  <p>
+    Not up for discussion on this page — recording it so the mockups below are read against
+    the right baseline.
+  </p>
+  <ul>
+    <li><strong>The waterfall spans the full window</strong>, above both panes, instead of
+      living inside the receive pane.</li>
+    <li><strong>Receive and transmit each get a 4:3 picture of the same size</strong>, side by
+      side. Today transmit is the wider of the two, which is backwards — the received picture
+      is the one you most want to see.</li>
+    <li><strong>Tabbed stays available</strong> for a narrow screen (already shipped,
+      <span class="k">View ▸ Layout</span>).</li>
+  </ul>
+</section>
+
+<section data-sec id="s-now">
+  <h2>What is on screen today</h2>
+  <p>
+    For comparison. The waterfall is trapped inside the receive pane, the panes are unequal,
+    and the overlay tools take a fixed column down the right of the transmit side.
+  </p>
+  <figure>
+    <div class="frame">
+      <div class="win">
+        <div class="bar">SSTVAE — File · View · Help</div>
+        <div class="body">
+          <div class="panes uneven">
+            <div class="pane">
+              <div class="cap">Receive</div>
+              <div class="fall">waterfall — receive pane only</div>
+              <div class="pic tall" style="margin-top:.4rem">picture</div>
+              <div class="row"><span class="btn-w">Start</span><span class="btn-w">Stop</span><span class="btn-w">Save</span></div>
+            </div>
+            <div class="pane">
+              <div class="cap">Transmit</div>
+              <div class="side">
+                <div class="pic tall" style="min-height:190px">canvas</div>
+                <div class="col-tools">
+                  <span class="btn-w">Picture</span>
+                  <span class="btn-w">Overlay</span>
+                  <span class="btn-w">Selected</span>
+                </div>
+              </div>
+              <div class="row"><span class="btn-w">Mode</span><span class="btn-w">Level</span><span class="btn-w accent">Send</span></div>
+            </div>
+          </div>
+          <div class="dock">Status log</div>
+        </div>
+      </div>
+    </div>
+    <figcaption>Shipped today <span class="tag now">current</span> — the transmit canvas gets roughly 2.5× the
+      area of the received picture.</figcaption>
+  </figure>
+</section>
+
+<section data-sec id="s-a1">
+  <h2>A1 — tools in a band below the canvas</h2>
+  <p>
+    What the parked work-in-progress did. The transmit pane becomes canvas-on-top,
+    controls-underneath, exactly mirroring the receive pane. The properties for a selected
+    item sit in one horizontal row rather than a stacked column.
+  </p>
+  <figure>
+    <div class="frame">
+      <div class="win">
+        <div class="bar">SSTVAE — File · View · Help</div>
+        <div class="body">
+          <div class="fall">waterfall — full width, spans both panes</div>
+          <div class="panes">
+            <div class="pane">
+              <div class="cap">Receive</div>
+              <div class="pic">4:3 received</div>
+              <div class="row"><span class="btn-w">Start</span><span class="btn-w">Stop</span><span class="btn-w">Save</span><span class="btn-w">Autosave</span></div>
+            </div>
+            <div class="pane">
+              <div class="cap">Transmit</div>
+              <div class="pic">4:3 canvas</div>
+              <div class="row">
+                <span class="btn-w">Choose image…</span><span class="btn-w">Framing…</span>
+                <span class="btn-w">Add text</span><span class="btn-w">Add image</span><span class="btn-w">Remove</span>
+              </div>
+              <div class="row">
+                <span class="btn-w">Text ▭</span><span class="btn-w">Align ▾</span>
+                <span class="btn-w">Size</span><span class="btn-w">Rot</span><span class="btn-w">Colour</span>
+              </div>
+            </div>
+          </div>
+          <div class="row"><span class="btn-w">Mode</span><span class="btn-w">Level</span><span class="btn-w accent">Send</span></div>
+          <div class="dock">Status log</div>
+        </div>
+      </div>
+    </div>
+    <figcaption>Everything visible at once, and the two panes are structurally identical —
+      picture, then its controls.</figcaption>
+  </figure>
+  <p>
+    <strong>Costs.</strong> Two rows of controls under the transmit canvas and one under the
+    receive canvas means the panes are only equal in <em>picture</em>, not in total height —
+    so the transmit side sets the window's floor. The property row has to fit five fields
+    across a half-window; on a narrow window they wrap to a third row and the asymmetry grows.
+  </p>
+</section>
+
+<section data-sec id="s-a2">
+  <h2>A2 — properties become a dock</h2>
+  <p>
+    A thin strip of tool buttons stays under the canvas. The <em>property editor</em> —
+    text, align, size, rotation, colour — moves into a dock at the bottom of the window,
+    beside the status log, using the same mechanism. It appears when an item is selected
+    and is closed the rest of the time.
+  </p>
+  <figure>
+    <div class="frame">
+      <div class="win">
+        <div class="bar">SSTVAE — File · View · Help</div>
+        <div class="body">
+          <div class="fall">waterfall — full width, spans both panes</div>
+          <div class="panes">
+            <div class="pane">
+              <div class="cap">Receive</div>
+              <div class="pic">4:3 received</div>
+              <div class="row"><span class="btn-w">Start</span><span class="btn-w">Stop</span><span class="btn-w">Save</span><span class="btn-w">Autosave</span></div>
+            </div>
+            <div class="pane">
+              <div class="cap">Transmit</div>
+              <div class="pic">4:3 canvas</div>
+              <div class="row">
+                <span class="btn-w">Choose image…</span><span class="btn-w">Add text</span>
+                <span class="btn-w">Add image</span><span class="btn-w">Remove</span>
+              </div>
+            </div>
+          </div>
+          <div class="row"><span class="btn-w">Mode</span><span class="btn-w">Level</span><span class="btn-w accent">Send</span></div>
+          <div class="tabs-w" style="margin-top:.3rem">
+            <span class="tab-w">Selected item</span><span class="tab-w off">Status log</span>
+          </div>
+          <div class="dock">Text ▭ · Align ▾ · Size · Rotation · Colour…</div>
+        </div>
+      </div>
+    </div>
+    <figcaption>The panes stay genuinely equal, because neither carries a property editor.
+      The dock is tabbed with the status log, so it costs no permanent height.</figcaption>
+  </figure>
+  <p>
+    <strong>Costs.</strong> The property editor is a long way from the item you are editing —
+    bottom of the window, while the item is mid-canvas. And a panel that appears on selection
+    shifts the layout underneath you, which is the thing tabs were meant to stop doing. It is
+    also the most code: a second dock, its visibility rules, and a tab group with the log.
+  </p>
+</section>
+
+<section data-sec id="s-a3">
+  <h2>A3 — tools float over the canvas</h2>
+  <p>
+    Tool buttons in a small group in the canvas corner; properties in a popover anchored near
+    the selected item. Nothing below the canvas but the send bar, so the two panes are equal
+    in picture <em>and</em> in total height.
+  </p>
+  <figure>
+    <div class="frame">
+      <div class="win">
+        <div class="bar">SSTVAE — File · View · Help</div>
+        <div class="body">
+          <div class="fall">waterfall — full width, spans both panes</div>
+          <div class="panes">
+            <div class="pane">
+              <div class="cap">Receive</div>
+              <div class="pic">4:3 received</div>
+              <div class="row"><span class="btn-w">Start</span><span class="btn-w">Stop</span><span class="btn-w">Save</span><span class="btn-w">Autosave</span></div>
+            </div>
+            <div class="pane">
+              <div class="cap">Transmit</div>
+              <div class="pic">
+                4:3 canvas
+                <span class="float"><span class="btn-w">img</span><span class="btn-w">T</span><span class="btn-w">▣</span><span class="btn-w">✕</span></span>
+                <span class="popover">Align ▾ · Size · Rot · Colour</span>
+              </div>
+              <div class="row"><span class="btn-w">Mode</span><span class="btn-w">Level</span><span class="btn-w accent">Send</span></div>
+            </div>
+          </div>
+          <div class="dock">Status log</div>
+        </div>
+      </div>
+    </div>
+    <figcaption>The most compact, and the only one where both panes are exactly the same
+      total size. The properties sit next to what they edit.</figcaption>
+  </figure>
+  <p>
+    <strong>Costs.</strong> It is the least native-looking of the three, and you asked for
+    traditional Qt rather than something that reads as designed-for-its-own-sake. Floating
+    controls also cover the picture they are editing, and a popover needs its own placement
+    logic so it never lands off-screen or on top of the selection.
+  </p>
+</section>
+
+<section data-sec id="s-decide">
+  <h2>Decisions</h2>
+  <p>
+    Pick each one; click a chosen option again to clear it. Everything is kept in this browser,
+    so you can come back to it. The block at the bottom is what you paste back to me.
+  </p>
+
+  <div class="q" role="group" aria-labelledby="q1-label" data-key="tx-tools">
+    <p class="qtext" id="q1-label">Where do the transmit overlay tools live?</p>
+    <p class="qhint">The one thing that stalled option A. Everything else about the layout follows from it.</p>
+    <div class="opts">
+      <button type="button" class="opt" aria-pressed="false" data-value="below-canvas"
+              data-label="A1 — band below the canvas">
+        A1 · band below the canvas<span class="rec">rec</span>
+        <span class="kk">mirrors the receive pane; nothing hidden</span>
+      </button>
+      <button type="button" class="opt" aria-pressed="false" data-value="properties-dock"
+              data-label="A2 — properties in a dock">
+        A2 · properties in a dock
+        <span class="kk">panes exactly equal; editor far from the item</span>
+      </button>
+      <button type="button" class="opt" aria-pressed="false" data-value="floating"
+              data-label="A3 — floating over the canvas">
+        A3 · floating over the canvas
+        <span class="kk">most compact; least Qt-native</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="q" role="group" aria-labelledby="q2-label" data-key="pane-sizing">
+    <p class="qtext" id="q2-label">Are the two panes locked to equal width?</p>
+    <p class="qhint">You said "same size, or much closer". A splitter can start equal and still be dragged.</p>
+    <div class="opts">
+      <button type="button" class="opt" aria-pressed="false" data-value="equal-draggable"
+              data-label="Equal by default, splitter still draggable">
+        Equal by default, still draggable<span class="rec">rec</span>
+        <span class="kk">opens 50/50; you can widen either side</span>
+      </button>
+      <button type="button" class="opt" aria-pressed="false" data-value="locked-equal"
+              data-label="Locked equal, no drag">
+        Locked equal, no drag
+        <span class="kk">always identical; one less thing to knock out of place</span>
+      </button>
+    </div>
+    <p class="qhint" style="margin:.8rem 0 0">
+      <strong>Chosen: locked equal</strong>, against the recommendation above — recording that
+      rather than quietly rewriting it. The case for locking is good: the original complaint
+      was that transmit had ~2.5× the received picture's area, and a draggable handle is a
+      thing that gets knocked out of place and stays there. The case for draggable was that an
+      odd screen might want one side wider. Cheap to revisit either way, since both are the
+      same container. One consequence worth knowing: locked means the splitter is
+      <em>replaced</em> by an equal-stretch layout rather than having its handle disabled, so
+      the panes also stop being collapsible.
+    </p>
+  </div>
+
+  <div class="q" role="group" aria-labelledby="q3-label" data-key="waterfall-tabs">
+    <p class="qtext" id="q3-label">In tabbed mode, where does the full-width waterfall go?</p>
+    <p class="qhint">Tabs exist for narrow screens, where vertical space is also scarce.</p>
+    <div class="opts">
+      <button type="button" class="opt" aria-pressed="false" data-value="above-tabs"
+              data-label="Stays above the tabs, always visible">
+        Stays above the tabs<span class="rec">rec</span>
+        <span class="kk">band activity visible while composing — the point of it</span>
+      </button>
+      <button type="button" class="opt" aria-pressed="false" data-value="inside-rx"
+              data-label="Goes back inside the receive tab">
+        Back inside the receive tab
+        <span class="kk">saves height on the screens that need it most</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<section data-sec id="s-cost">
+  <h2>What this costs, and the bug it collides with</h2>
+  <p>
+    Worth seeing before you choose, because it changes which option is cheap. Switching to
+    tabs today grows the window and it never shrinks back — you sent screenshots of exactly
+    that. Measured on the pane container:
+  </p>
+  <table>
+    <thead><tr><th>Pane width</th><th>Side by side</th><th>Tabbed</th></tr></thead>
+    <tbody>
+      <tr><td class="num">900 px</td><td>no constraint</td><td class="num">1000 px minimum height</td></tr>
+      <tr><td class="num">1400 px</td><td>no constraint</td><td class="num">1375 px</td></tr>
+      <tr><td class="num">2020 px</td><td>no constraint</td><td class="num">1840 px</td></tr>
+    </tbody>
+  </table>
+  <p>
+    It is <span class="k">0.75 × width</span>: a widget asking to be 4:3 through
+    <span class="k">heightForWidth</span>, which a splitter ignores and a tab widget passes
+    straight to the window. The transmit half of it is fixed; the receive half is not yet.
+  </p>
+  <p>
+    This matters for the choice above because <strong>every option here makes the panes
+    wider</strong> than they are today, so any remaining aspect-ratio constraint gets more
+    expensive, not less. It also means A is probably cheaper than it looked when I parked it —
+    the 1586 px window minimum that stalled it was very likely this same class of bug rather
+    than anything about the layout.
+  </p>
+</section>
+
+<section data-sec id="s-out">
+  <h2>Send it back</h2>
+  <p>
+    One click selects the whole block. Undecided questions are listed explicitly, so nothing
+    is ambiguous about what you did and did not answer.
+  </p>
+  <div class="note" style="max-width:66ch">
+    <label for="freenotes">Anything else</label>
+    <textarea id="freenotes" placeholder="Free text — constraints, a fourth option, screen sizes you care about…"></textarea>
+  </div>
+  <pre id="out">building…</pre>
+  <div class="actions">
+    <button type="button" class="push" id="copy">Copy block</button>
+    <button type="button" class="push ghost" id="clear">Clear all</button>
+    <span id="say" role="status"></span>
+  </div>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var DOC = 'sstvae-option-a-2026-08-03';
+  var KEY = 'artifact:' + DOC;
+
+  function load() {
+    try {
+      var raw = window.localStorage.getItem(KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+  function save(state) {
+    try { window.localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+  }
+
+  var state = load();
+  if (!state.picks) state.picks = {};
+  if (!state.comments) state.comments = {};
+  if (typeof state.notes !== 'string') state.notes = '';
+
+  // --- section comment boxes, generated from the headings ---------------
+  var sections = [].slice.call(document.querySelectorAll('section[data-sec]'));
+  var sectionInfo = [];
+  sections.forEach(function (sec, i) {
+    var h = sec.querySelector('h2');
+    var title = h ? h.textContent.trim() : sec.id;
+    var num = i + 1;
+    var id = sec.id || ('sec-' + num);
+    sectionInfo.push({ id: id, num: num, title: title });
+
+    var wrap = document.createElement('div');
+    wrap.className = 'note';
+    var label = document.createElement('label');
+    label.setAttribute('for', 'c-' + id);
+    label.textContent = '§' + num + ' comment';
+    var ta = document.createElement('textarea');
+    ta.id = 'c-' + id;
+    ta.placeholder = 'Notes on this section…';
+    ta.value = state.comments[id] || '';
+    ta.addEventListener('input', function () {
+      state.comments[id] = ta.value;
+      save(state);
+      render();
+    });
+    wrap.appendChild(label);
+    wrap.appendChild(ta);
+    sec.appendChild(wrap);
+  });
+
+  // --- decision pickers --------------------------------------------------
+  var groups = [].slice.call(document.querySelectorAll('.q[data-key]'));
+  groups.forEach(function (group) {
+    var key = group.getAttribute('data-key');
+    var buttons = [].slice.call(group.querySelectorAll('.opt'));
+    buttons.forEach(function (btn) {
+      var value = btn.getAttribute('data-value');
+      if (state.picks[key] === value) btn.setAttribute('aria-pressed', 'true');
+      btn.addEventListener('click', function () {
+        var already = state.picks[key] === value;
+        buttons.forEach(function (b) { b.setAttribute('aria-pressed', 'false'); });
+        if (already) {
+          delete state.picks[key];
+        } else {
+          state.picks[key] = value;
+          btn.setAttribute('aria-pressed', 'true');
+        }
+        save(state);
+        render();
+      });
+    });
+  });
+
+  function labelFor(key, value) {
+    var group = document.querySelector('.q[data-key="' + key + '"]');
+    if (!group) return value;
+    var btn = group.querySelector('.opt[data-value="' + value + '"]');
+    return btn ? (btn.getAttribute('data-label') || value) : value;
+  }
+
+  var notesField = document.getElementById('freenotes');
+  notesField.value = state.notes;
+  notesField.addEventListener('input', function () {
+    state.notes = notesField.value;
+    save(state);
+    render();
+  });
+
+  var out = document.getElementById('out');
+  var say = document.getElementById('say');
+
+  function build() {
+    var lines = [];
+    lines.push('=== DECISIONS · ' + DOC + ' ===');
+    var answered = 0;
+    groups.forEach(function (group) {
+      var key = group.getAttribute('data-key');
+      var value = state.picks[key];
+      if (value) {
+        answered++;
+        lines.push(key + ':  ' + value + '  — ' + labelFor(key, value));
+      } else {
+        lines.push(key + ':  (undecided)');
+      }
+    });
+    lines.push('');
+    lines.push('notes: ' + (state.notes.trim() ? state.notes.trim() : '(none)'));
+
+    var commented = 0;
+    var body = [];
+    sectionInfo.forEach(function (info) {
+      var text = (state.comments[info.id] || '').trim();
+      if (!text) return;
+      commented++;
+      body.push('§' + info.num + '  ' + info.title);
+      text.split('\n').forEach(function (line) { body.push('    > ' + line); });
+    });
+    if (body.length) {
+      lines.push('');
+      lines.push('--- section comments ---');
+      lines = lines.concat(body);
+    }
+    lines.push('=== END (' + answered + '/' + groups.length + ' answered · ' +
+               commented + ' comment' + (commented === 1 ? '' : 's') + ') ===');
+    return lines.join('\n');
+  }
+
+  function render() { out.textContent = build(); }
+
+  // --- copy, three tiers, and never quietly -----------------------------
+  function selectBlock() {
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(out);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) { /* nothing more we can do */ }
+  }
+
+  function tellManual() {
+    selectBlock();
+    // Sticky on purpose: this is an instruction, not a confirmation.
+    say.textContent = 'Selected below — press ' +
+      (navigator.platform && /Mac/i.test(navigator.platform) ? '⌘C' : 'Ctrl+C') + ' to copy.';
+    say.className = 'act';
+  }
+
+  function confirmCopied() {
+    say.textContent = 'Copied.';
+    say.className = '';
+    window.setTimeout(function () {
+      if (say.textContent === 'Copied.') say.textContent = '';
+    }, 4000);
+  }
+
+  function execCopyFallback() {
+    var text = build();
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', 'readonly');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    var ok = false;
+    try {
+      ta.select();
+      ok = document.execCommand('copy');
+    } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  document.getElementById('copy').addEventListener('click', function () {
+    var text = build();
+    var wrote = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          confirmCopied();
+        }, function () {
+          if (execCopyFallback()) { confirmCopied(); } else { tellManual(); }
+        });
+        wrote = true;
+      }
+    } catch (e) {
+      wrote = false;
+    }
+    if (!wrote) {
+      if (execCopyFallback()) { confirmCopied(); } else { tellManual(); }
+    }
+  });
+
+  document.getElementById('clear').addEventListener('click', function () {
+    if (!window.confirm('Clear every pick and every comment on this page? This cannot be undone.')) {
+      return;
+    }
+    state = { picks: {}, comments: {}, notes: '' };
+    save(state);
+    document.querySelectorAll('.opt').forEach(function (b) {
+      b.setAttribute('aria-pressed', 'false');
+    });
+    document.querySelectorAll('section[data-sec] textarea').forEach(function (t) { t.value = ''; });
+    notesField.value = '';
+    say.textContent = 'Cleared.';
+    say.className = '';
+    render();
+  });
+
+  render();
+})();
+</script>
