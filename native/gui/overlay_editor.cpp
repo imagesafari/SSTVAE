@@ -328,10 +328,27 @@ void OverlayEditor::mouseReleaseEvent(QMouseEvent* event) {
 
 void OverlayEditor::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
-    // From the widget's own new width, where it is authoritative.
-    const int want =
-        std::max(120, width() * overlay::CANVAS_H / overlay::CANVAS_W);
-    if (minimumHeight() != want) setFixedHeight(want);
+    // A *maximum*, never a fixed height -- the same rule, and the same
+    // reason, as `PictureBox` (see picture_box.hpp). `setFixedHeight`
+    // here made the editor's minimum height follow its width, so the
+    // transmit pane raised a floor under the whole window that
+    // narrowing it never lowered: measured at 611 px minimum height on
+    // a 545 px pane, 925 at 1348 and **1274 at 1900**. Bounded while
+    // the splitter kept each pane narrow, and unbounded once a tab
+    // hands this pane the entire window.
+    //
+    // Nothing is given up by capping instead: `canvas_rect()` already
+    // letterboxes in *both* directions, so a pane too short for 4:3
+    // draws a smaller centred canvas rather than a stretched one, and
+    // the handles follow it because they come from the same rectangle.
+    const int cap = std::max(120, width() * overlay::CANVAS_H / overlay::CANVAS_W);
+    if (maximumHeight() != cap) {
+        setMaximumHeight(cap);
+        // The cap trails the width by one pass (Qt clamps incoming
+        // geometry against the previous maximum); this asks the layout
+        // for the pass in which the new one applies.
+        updateGeometry();
+    }
 }
 
 void OverlayEditor::keyPressEvent(QKeyEvent* event) {

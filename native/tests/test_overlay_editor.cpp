@@ -11,6 +11,8 @@
 #include <QApplication>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QVBoxLayout>
+#include <QWidget>
 
 #include <algorithm>
 #include <cmath>
@@ -296,6 +298,48 @@ void test_an_added_item_can_be_nudged_without_clicking_first() {
                    "nudge: the editor is reachable by keyboard after an add");
 }
 
+// The editor must not pin a window height to its own width.
+//
+// It used to: `setFixedHeight(width * 3/4)` in `resizeEvent`, which is
+// a hard *minimum*, so widening the transmit pane raised a floor under
+// the whole window that narrowing it never lowered. Measured before the
+// fix, through `sstvae-gui-shot --transmit`: the panel's minimum height
+// went 611 px at 545 wide, 925 at 1348, **1274 at 1900**. Bounded while
+// a splitter kept the pane narrow; unbounded once a tab hands it the
+// entire window. The identical construct in the receive preview is
+// guarded by `test_picture_box.cpp` -- this is the other copy.
+//
+// Nothing is lost by capping instead: `canvas_rect()` letterboxes in
+// both directions, so a pane too short for 4:3 draws a smaller centred
+// canvas and the handles follow it, because they come from that same
+// rectangle.
+void test_it_pins_no_window_height() {
+    QWidget container;
+    auto* layout = new QVBoxLayout(&container);
+    layout->setContentsMargins(0, 0, 0, 0);
+    auto* editor = new gui::OverlayEditor(&container);
+    layout->addWidget(editor);
+    container.resize(3000, 2000);
+    container.show();
+
+    int previous = 0;
+    for (const int w : {545, 900, 1348, 1900}) {
+        // Twice: the cap is derived from the width, so Qt clamps the
+        // incoming geometry against the previous one and the new cap
+        // applies on the pass `updateGeometry` asks for.
+        for (int pass = 0; pass < 2; ++pass) {
+            container.setGeometry(0, 0, w, 400);
+            QCoreApplication::processEvents();
+        }
+        const int floor = container.minimumSizeHint().height();
+        if (previous != 0) {
+            check::equal(floor, previous,
+                         "the minimum height does not follow the editor's width");
+        }
+        previous = floor;
+    }
+}
+
 int main(int argc, char** argv) {
     check::report_crashes_instead_of_prompting();
     qputenv("QT_QPA_PLATFORM", "offscreen");
@@ -311,6 +355,7 @@ int main(int argc, char** argv) {
     test_arrows_nudge_by_a_fixed_fraction();
     test_delete_removes_the_selection();
     test_an_added_item_can_be_nudged_without_clicking_first();
+    test_it_pins_no_window_height();
 
     return check::report("overlay editor");
 }

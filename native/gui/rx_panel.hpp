@@ -30,6 +30,7 @@
 #include <thread>
 
 #include "images/types.hpp"
+#include "picture_box.hpp"
 #include "rx/engine.hpp"
 #include "rx/ringbuffer.hpp"
 
@@ -88,14 +89,16 @@ signals:
     // partial one would be a poor keepsake.
     void imageReceived(const images::Picture& image);
     void listeningChanged(bool listening);
+    // Whatever the panel's own status line now reads. Emitted for every
+    // change, so a second display of it (the status bar, while the
+    // window is tabbed and this pane may be behind the other one) cannot
+    // drift from the first.
+    void statusChanged(const QString& text);
 
     // Emitted from the decode thread; connected queued to the slots
     // below so the work lands on the GUI thread.
     void receptionFinished(const QString& saved_path);
     void errorOccurred(const QString& message);
-
-protected:
-    void resizeEvent(QResizeEvent* event) override;
 
 private slots:
     void refresh_status();
@@ -105,6 +108,10 @@ private slots:
 
 private:
     void build_ui();
+    // The one way the status line is written. A bare `status_->setText`
+    // would leave the status bar's copy stale on whichever of the five
+    // call sites someone forgot.
+    void set_status(const QString& text);
     void show_image(const images::Picture& image);
     void set_displayed(const images::Picture& image, const std::string& callsign,
                        const std::optional<std::string>& mode_name);
@@ -116,7 +123,7 @@ private:
 
     // --- widgets
     ErrorBanner* banner_ = nullptr;
-    QLabel* preview_ = nullptr;
+    PictureBox* preview_ = nullptr;
     QLabel* status_ = nullptr;
     QLabel* last_card_ = nullptr;
     QProgressBar* progress_ = nullptr;
@@ -143,9 +150,6 @@ private:
     std::optional<images::Picture> displayed_;
     std::string displayed_callsign_;
     std::optional<std::string> displayed_mode_;
-    // Unscaled, so a resize rescales from the original rather than
-    // compounding losses.
-    QPixmap preview_pixmap_;
     // Identity check, to avoid repainting a picture already on screen.
     const images::Picture* shown_ = nullptr;
 

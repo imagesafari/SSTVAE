@@ -23,6 +23,7 @@
 #include <QStringList>
 #include <QTabWidget>
 
+#include <cmath>
 #include <cstdio>
 #include <string>
 
@@ -31,6 +32,7 @@
 #include "crop_dialog.hpp"
 #include "log/log.hpp"
 #include "log_pane.hpp"
+#include "pane_container.hpp"
 #include "rx_panel.hpp"
 #include "settings/settings.hpp"
 #include "settings_dialog.hpp"
@@ -49,6 +51,8 @@ void usage() {
                  "  --receive    also shoot the receive panel\n"
                  "  --crop       also shoot the framing dialog\n"
                  "  --log        also shoot the log pane and error banner\n"
+                 "  --panes      also shoot both pane layouts, and report the\n"
+                 "               minimum width each one imposes on the window\n"
                  "\n"
                  "Writes settings-<n>-<name>.png, one per tab.\n");
 }
@@ -82,6 +86,7 @@ int main(int argc, char** argv) {
     bool receive = false;
     bool crop = false;
     bool log_widgets = false;
+    bool panes = false;
 
     const QStringList args = QCoreApplication::arguments();
     for (int i = 1; i < args.size(); ++i) {
@@ -106,6 +111,8 @@ int main(int argc, char** argv) {
             crop = true;
         } else if (arg == QLatin1String("--log")) {
             log_widgets = true;
+        } else if (arg == QLatin1String("--panes")) {
+            panes = true;
         } else {
             usage();
             return 2;
@@ -177,6 +184,51 @@ int main(int argc, char** argv) {
         std::printf("%s (min %dx%d)\n", path.toLocal8Bit().constData(),
                     panel.minimumSizeHint().width(),
                     panel.minimumSizeHint().height());
+    }
+
+    // Both pane arrangements, with the *real* panels in them.
+    //
+    // This is the one target that reports a number worth acting on
+    // rather than a picture worth looking at. The tabbed layout exists
+    // because a `QSplitter`'s minimum width is the sum of its
+    // children's where a `QTabWidget`'s is the max, and that claim is
+    // only interesting at the sizes the actual panels demand --
+    // `test_pane_container.cpp` proves the structure holds with toy
+    // panes, but only these two say whether the saving is enough to
+    // reach a real laptop panel. Re-run it whenever either panel grows
+    // a control.
+    if (panes) {
+        sstvae::gui::AppState state;
+        auto* rx = new sstvae::gui::ReceivePanel(&state);
+        auto* tx = new sstvae::gui::TransmitPanel(&state);
+        rx->fill_for_screenshot();
+        sstvae::gui::PaneContainer container(rx, QStringLiteral("Receive"), tx,
+                                             QStringLiteral("Transmit"));
+        container.resize(width > 0 ? width : 1360, height > 0 ? height : 760);
+        container.show();
+        app.processEvents();
+
+        const QString split_path = QStringLiteral("%1/panes-split.png").arg(out);
+        container.grab().save(split_path);
+        const QSize split_min = container.minimumSizeHint();
+        std::printf("%s (min %dx%d)\n", split_path.toLocal8Bit().constData(),
+                    split_min.width(), split_min.height());
+
+        container.set_mode(sstvae::gui::PaneLayout::Tabs);
+        app.processEvents();
+        const QString tabs_path = QStringLiteral("%1/panes-tabs.png").arg(out);
+        container.grab().save(tabs_path);
+        const QSize tabs_min = container.minimumSizeHint();
+        // **Both axes.** Reporting only the width measures the axis this
+        // layout improves and stays silent on the one it can wreck: a
+        // pane that pins its height to its width (see `picture_box.hpp`)
+        // does its worst damage exactly when a tab hands it the whole
+        // window, which is the case a width-only number cannot see.
+        std::printf("%s (min %dx%d; %d px narrower, %d px %s)\n",
+                    tabs_path.toLocal8Bit().constData(), tabs_min.width(),
+                    tabs_min.height(), split_min.width() - tabs_min.width(),
+                    std::abs(split_min.height() - tabs_min.height()),
+                    tabs_min.height() > split_min.height() ? "TALLER" : "shorter");
     }
 
     // The framing dialog, on a 16:9 source -- the case it exists for,

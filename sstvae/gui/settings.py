@@ -127,6 +127,18 @@ class TransmitConfig:
 
 
 @dataclass
+class UiConfig:
+    # Window layout: "auto" | "split" (receive and transmit side by
+    # side) | "tabs" (one at a time, for a screen too narrow for both).
+    #
+    # As with `transmit.optimize` above, the **native** app implements
+    # this and the key exists here only so the two agree about the
+    # config file -- a config written by one must not read as a typo to
+    # the other. This GUI has its own tab widget and no such choice.
+    layout: str = "auto"
+
+
+@dataclass
 class Config:
     callsign: str = ""
     # None = the published ONNX artifacts, fetched and cached on first use.
@@ -142,6 +154,7 @@ class Config:
     folders: FolderConfig = field(default_factory=FolderConfig)
     receive: ReceiveConfig = field(default_factory=ReceiveConfig)
     transmit: TransmitConfig = field(default_factory=TransmitConfig)
+    ui: UiConfig = field(default_factory=UiConfig)
     version: int = CONFIG_VERSION
 
     # --- persistence ---------------------------------------------------

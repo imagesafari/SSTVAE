@@ -168,6 +168,25 @@ struct TransmitConfig {
     bool optimize = false;
 };
 
+// How the window arranges the receive and transmit halves.
+//
+// This is a *structural* setting, not a cosmetic one. A QSplitter's
+// minimum width is the sum of its children's; a QTabWidget's is the
+// max. Side by side is the better layout and the default -- you compose
+// the next picture while watching the current reception -- but it puts
+// a hard floor under the window that a small panel cannot meet, and no
+// amount of scrolling inside the panes removes it.
+struct UiConfig {
+    // "auto" | "split" | "tabs".
+    //
+    // "auto" is resolved **once, at startup, against the screen** --
+    // never against the window's own width. A live breakpoint cannot
+    // work here: while side by side is in force the splitter's minimum
+    // stops the window shrinking to the width that would trigger the
+    // switch, so the downward transition is unreachable by definition.
+    std::string layout = "auto";
+};
+
 struct Config {
     std::string callsign;
     // Empty = the published ONNX artifacts, fetched and cached on first
@@ -181,6 +200,7 @@ struct Config {
     FolderConfig folders;
     ReceiveConfig receive;
     TransmitConfig transmit;
+    UiConfig ui;
     int version = CONFIG_VERSION;
 };
 

@@ -261,6 +261,20 @@ void read_transmit(const Reader& r, TransmitConfig& c) {
     r.report_unknown({"mode", "level", "optimize"});
 }
 
+void read_ui(const Reader& r, UiConfig& c) {
+    r.get("layout", c.layout);
+    // An unrecognised value falls back to "auto" *and says so*, rather
+    // than being kept and quietly meaning "side by side" downstream --
+    // this is the one setting whose wrong value makes the window
+    // unusable on the screen it was set for.
+    if (c.layout != "auto" && c.layout != "split" && c.layout != "tabs") {
+        r.notes.add(r.path("layout"), "unknown layout '" + c.layout +
+                                          "'; expected auto, split or tabs");
+        c.layout = "auto";
+    }
+    r.report_unknown({"layout"});
+}
+
 // Empty string <-> JSON null, for the fields Python declares optional.
 json or_null(const std::string& s) {
     if (s.empty()) return nullptr;
@@ -352,8 +366,9 @@ Config from_json(const std::string& text, std::vector<Note>* sink) {
     if (auto s = r.section("folders")) read_folders(*s, c.folders);
     if (auto s = r.section("receive")) read_receive(*s, c.receive);
     if (auto s = r.section("transmit")) read_transmit(*s, c.transmit);
+    if (auto s = r.section("ui")) read_ui(*s, c.ui);
     r.report_unknown({"callsign", "model_path", "precision", "version", "audio", "rig",
-                      "folders", "receive", "transmit"});
+                      "folders", "receive", "transmit", "ui"});
 
     if (c.version > CONFIG_VERSION) {
         notes.add("version",
@@ -411,6 +426,7 @@ std::string to_json(const Config& c) {
          {{"mode", c.transmit.mode},
           {"level", c.transmit.level},
           {"optimize", c.transmit.optimize}}},
+        {"ui", {{"layout", c.ui.layout}}},
         {"version", c.version},
     };
     return root.dump(2) + "\n";

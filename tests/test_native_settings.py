@@ -189,6 +189,13 @@ def test_a_realistic_hand_edited_config_survives(native):
     cfg.receive.filename_template = "{callsign}_{date}"
     cfg.transmit.mode = "C"
     cfg.transmit.level = 0.72
+    # These two are the reason the docstring's claim has to be checked
+    # rather than trusted: both were added after this fixture was
+    # written, and until they were listed here the C++ reader could have
+    # ignored either section entirely -- returning the default that the
+    # fixture also carried -- with this test still green.
+    cfg.transmit.optimize = True
+    cfg.ui.layout = "tabs"
 
     # The rig section is covered by its own tests; see _shared.
     want = cfg.to_dict()
@@ -234,6 +241,27 @@ def test_wrong_types_fall_back_to_defaults_and_are_reported(native):
     assert "transmit" in reported
     assert _shared(got) == _shared(Config().to_dict()), \
         "a bad value should leave the default in place"
+
+
+def test_an_unknown_window_layout_falls_back_and_says_so(native):
+    """`ui.layout` is one of three words, and a fourth is not fatal.
+
+    Worth its own test because the *effect* of a bad value is nothing
+    visible: an unrecognised layout that were kept would simply be
+    treated as "not tabs" downstream, so the operator would set a
+    preference, see the other layout, and get no explanation. The value
+    is reset to "auto" and the reset is reported.
+    """
+    cpp = _cpp(native)
+    data = Config().to_dict()
+    data["ui"]["layout"] = "side-by-side"  # plausible, and not one of ours
+
+    got_text, notes = cpp.round_trip(json.dumps(data))
+    reported = {key: problem for key, problem in notes}
+
+    assert "ui.layout" in reported, reported
+    assert "side-by-side" in reported["ui.layout"], reported["ui.layout"]
+    assert json.loads(got_text)["ui"]["layout"] == "auto"
 
 
 def test_a_corrupt_file_still_yields_a_usable_config(native):
