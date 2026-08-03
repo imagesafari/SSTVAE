@@ -238,14 +238,19 @@ bool ReceivePanel::start() {
     try {
         stream_ = std::make_unique<audio::qt::InputStream>(
             config.audio.input_device, *ring_, config::FS,
-            // Info, not an error. This says which device opened and at
-            // what rate; the resampler being in the path is normal (very
-            // little hardware is natively 8 kHz) and saying so in a
-            // sticky red banner told operators their setup was broken
-            // when it was working.
+            // What opened, and at what rate: information. The resampler
+            // being in the path is the normal case -- very little
+            // hardware is natively 8 kHz -- and a sticky red banner
+            // saying so told operators their setup was broken when it
+            // was working.
             [this](const std::string& message) {
                 app_->log_event("rx", log::Severity::Info,
                                 QString::fromStdString(message));
+            },
+            // Capture actually failing: banner and log, as before. This
+            // is the half that must not be quiet.
+            [this](const std::string& message) {
+                emit errorOccurred(QString::fromStdString(message));
             });
     } catch (const std::exception& e) {
         if (Waterfall* w = fall()) w->set_ring(nullptr);

@@ -79,15 +79,26 @@ class InputStream {
 public:
     // `device_name` empty means the system default. Throws if capture
     // cannot be started.
-    // `on_opened` reports **what was actually obtained** -- the device
-    // and the rate it opened at, and whether our resampler is in the
-    // path. It is information, not a failure: anything that stops
-    // capture starting throws instead. It was called `on_error` and the
-    // receive panel duly raised a sticky red banner saying "DAX IQ 1 at
-    // 96000 Hz, resampled to 8000 Hz", which is the layer working
-    // exactly as designed and reads as a fault in the operator's setup.
+    // **Two callbacks, because there are two kinds of message.**
+    //
+    // `on_opened` reports what was actually obtained: the device and the
+    // rate it opened at, and whether our resampler is in the path. That
+    // is information. Almost nothing is natively 8 kHz, so "resampled
+    // to 8000 Hz" is the normal case, and reporting it as a failure told
+    // operators their setup was broken when it was working.
+    //
+    // `on_error` is for capture actually going wrong once it is running
+    // -- a device disappearing, an underrun, a QAudio error code. Those
+    // deserve the sticky banner.
+    //
+    // They were one callback, and collapsing them cost twice: first the
+    // notice was raised as an error, and then, "fixing" that by
+    // reclassifying the whole channel as information, a genuine capture
+    // failure became a quiet log line with no banner at all. A channel
+    // that carries two severities cannot be given one.
     InputStream(const std::string& device_name, rx::RingBuffer& ring,
-                int samplerate = config::FS, Report on_opened = {});
+                int samplerate = config::FS, Report on_opened = {},
+                Report on_error = {});
     ~InputStream();
 
     InputStream(const InputStream&) = delete;
