@@ -39,13 +39,24 @@ public:
     ~OverlayEditor() override;
 
     QSize sizeHint() const override;
-    // The composer *is* the transmitted frame, so the widget is that
-    // shape rather than letterboxing a 4:3 canvas inside whatever
-    // rectangle it was handed and leaving a dead field around it.
-    // Pinned in resizeEvent rather than through heightForWidth, which a
-    // QSplitter ignores -- it sizes its children to fill.
-    bool hasHeightForWidth() const override { return true; }
-    int heightForWidth(int w) const override;
+    // **No `heightForWidth`, deliberately.** It was here, with a
+    // comment saying a `QSplitter` ignores it -- true, and the reason it
+    // did no visible harm for as long as it did. A `QTabWidget`
+    // *propagates* it, so the tabbed layout handed the window a
+    // minimum height of `width * 3/4`: 1840 px at 2020 px wide,
+    // measured. The window grew off the bottom of the screen and did
+    // not come back when the layout was switched again, because Qt
+    // lowers a minimum without resizing.
+    //
+    // It is also the one form of the ratchet a test on
+    // `minimumSizeHint()` cannot see, since that never consults
+    // `heightForWidth` -- Qt applies `minimumHeightForWidth` at layout
+    // time instead. `test_overlay_editor.cpp` measures a *container's*
+    // `minimumHeightForWidth` for that reason.
+    //
+    // The 4:3 shape is kept by `resizeEvent` (a maximum, which
+    // constrains nothing upward) and by `canvas_rect()`, which
+    // letterboxes both ways.
 
     // The picture the overlay sits on, already framed to the transmit
     // size by the caller.

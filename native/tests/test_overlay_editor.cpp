@@ -11,6 +11,7 @@
 #include <QApplication>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QLayout>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -337,6 +338,18 @@ void test_it_pins_no_window_height() {
                          "the minimum height does not follow the editor's width");
         }
         previous = floor;
+
+        // **And the constraint the hint cannot see.** `minimumSizeHint`
+        // never consults `heightForWidth`; what Qt actually applies when
+        // it lays a widget out is `minimumHeightForWidth(width)`. The
+        // first version of this test checked only the hint above, went
+        // green, and shipped a window that grew off the bottom of the
+        // screen -- because `hasHeightForWidth` was still set on the
+        // editor, a `QSplitter` hid it and a `QTabWidget` passed it
+        // straight through to the window.
+        check::is_true(!container.layout()->hasHeightForWidth() ||
+                           container.layout()->minimumHeightForWidth(w) <= floor,
+                       "and neither does minimumHeightForWidth");
     }
 }
 

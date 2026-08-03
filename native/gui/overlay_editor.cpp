@@ -32,9 +32,26 @@ QImage to_qimage(const images::Picture& picture) {
 
 OverlayEditor::OverlayEditor(QWidget* parent) : QWidget(parent) {
     setMinimumSize(320, 240);
-    QSizePolicy policy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    policy.setHeightForWidth(true);
-    setSizePolicy(policy);
+    // **No `setHeightForWidth`.** It is the third form of the same
+    // ratchet as `setFixedHeight` (see picture_box.hpp), and the most
+    // deceptive, because `minimumSizeHint()` never consults it -- a
+    // test asserting on the hint sees nothing wrong. What Qt actually
+    // applies at layout time is `minimumHeightForWidth(width)`, and
+    // with the flag set that is `width * 3/4`.
+    //
+    // It stayed harmless for as long as it did because a `QSplitter`
+    // does not propagate `hasHeightForWidth` and a `QTabWidget` does.
+    // So the tabbed layout exposed it to the window for the first time,
+    // and measured on the container: at 900 px wide it demanded 1107 px
+    // of height, at 1400 px 1375, at **2020 px 1840**. The window grew
+    // past the bottom of the screen, and switching back to side by side
+    // did not shrink it again -- Qt lowers a minimum without resizing.
+    //
+    // Nothing is lost. `resizeEvent` caps the height at 4:3 (a maximum,
+    // which constrains nothing upward) and `canvas_rect()` letterboxes
+    // in both directions, so the canvas is still exactly 4:3 at any
+    // shape this widget is given.
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     setMouseTracking(false);
     // Strong, not ClickFocus: the arrow keys and Delete are useless to
     // an operator who cannot get focus onto this widget, and ClickFocus
@@ -46,10 +63,6 @@ OverlayEditor::~OverlayEditor() = default;
 
 QSize OverlayEditor::sizeHint() const {
     return QSize(overlay::CANVAS_W, overlay::CANVAS_H);
-}
-
-int OverlayEditor::heightForWidth(int w) const {
-    return w * overlay::CANVAS_H / overlay::CANVAS_W;
 }
 
 void OverlayEditor::set_base_image(const images::Picture& image) {
