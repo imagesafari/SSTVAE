@@ -19,7 +19,9 @@
 // -- which is why the geometry is checked arithmetically here.
 
 #include <QApplication>
+#include <QLabel>
 #include <QPixmap>
+#include <QVBoxLayout>
 #include <QWidget>
 
 #include <cmath>
@@ -79,22 +81,38 @@ bool is_four_by_three(const QRect& r) {
 }
 
 void test_the_minimum_never_follows_the_width() {
-    Host host;
-    gui::PictureBox& box = host.box;
-    const int floor_h = box.minimumSizeHint().height();
-    const int floor_w = box.minimumSizeHint().width();
+    // **Measured through a layout, on the parent.** `minimumSizeHint()`
+    // is a constant here, so asserting it against itself is a
+    // tautology no implementation could fail -- and the thing that
+    // actually hurt was never the hint but the *effective* minimum a
+    // `setFixedHeight` installs, which propagates into whatever
+    // contains the box and from there into the window. So the box goes
+    // in a layout and the assertion is on the container.
+    QWidget container;
+    auto* layout = new QVBoxLayout(&container);
+    layout->setContentsMargins(0, 0, 0, 0);
+    auto* box = new gui::PictureBox(QStringLiteral("nothing yet"), &container);
+    layout->addWidget(box);
+    container.resize(3000, 2000);
+    container.show();
 
     // Widths spanning a narrow split pane through a full-window tab on
     // a large monitor. The 1400 case is the one that demanded a 1405 px
     // window before this was geometry rather than a fixed height.
+    int previous = 0;
     for (const int w : {200, 500, 1000, 1400, 2400}) {
-        host.sized(w, 400);
-        check::equal(box.minimumSizeHint().height(), floor_h,
-                     "the minimum height does not follow the width");
-        check::equal(box.minimumSizeHint().width(), floor_w,
-                     "the minimum width does not follow the width");
-        check::is_true(box.minimumHeight() <= floor_h,
-                       "no hard minimum height was installed either");
+        for (int pass = 0; pass < 2; ++pass) {
+            container.setGeometry(0, 0, w, 400);
+            QCoreApplication::processEvents();
+        }
+        const int floor = container.minimumSizeHint().height();
+        check::is_true(floor <= gui::PictureBox::MIN_H,
+                       "the container's minimum height stays at the box's floor");
+        if (previous != 0) {
+            check::equal(floor, previous,
+                         "and does not grow as the box gets wider");
+        }
+        previous = floor;
     }
 }
 
@@ -144,8 +162,16 @@ void test_a_picture_is_scaled_into_the_box() {
     // resized itself around its content would undo everything above.
     check::is_true(is_four_by_three(box.picture_rect()),
                    "the box keeps its shape once a picture is in it");
-    check::equal(box.minimumSizeHint().height(), gui::PictureBox::MIN_H,
-                 "and still imposes no floor");
+    check::equal(box.picture_rect().width(), 800,
+                 "and still fills the width it was given");
+    // The picture is actually *in* there and scaled to the rectangle --
+    // without this the whole file would pass on a box that draws
+    // nothing, which is what a `rescale()` reading the wrong size gives
+    // you.
+    const QPixmap shown = box.findChild<QLabel*>()->pixmap();
+    check::is_true(!shown.isNull(), "the picture is displayed");
+    check::equal(shown.width(), box.picture_rect().width(),
+                 "scaled to the box, not left at its own size");
 }
 
 }  // namespace

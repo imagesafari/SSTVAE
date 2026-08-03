@@ -125,6 +125,20 @@ MainWindow::~MainWindow() {
     // AppState-captured progress hook). Deleting the central widget by
     // hand first means every panel -- and every worker thread they own
     // -- is gone while AppState is still alive.
+    //
+    // **The panels' signals are severed first, and that is not
+    // belt-and-braces.** `~ReceivePanel` calls `stop()`, which writes
+    // its status line, which now emits `statusChanged` -- and the slot
+    // for it reaches back into `panes_`. But the panels are children of
+    // `panes_`, so by the time they are being destroyed `~PaneContainer`
+    // has already run its body and destroyed its `QString` members,
+    // while remaining a live QObject whose slots still fire. Without
+    // this the last act of every quit is `set_first_note` reading a
+    // destructed QString. Qt's automatic disconnect does not help: it
+    // happens in `~QObject`, which is after the derived members are
+    // gone.
+    disconnect(rx_panel_, nullptr, this, nullptr);
+    disconnect(tx_panel_, nullptr, this, nullptr);
     delete takeCentralWidget();
 }
 
@@ -185,14 +199,20 @@ void MainWindow::on_layout_changed(PaneLayout mode) {
     // the receive pane can be off screen. In split mode it would be the
     // same words twice, an arm's length apart.
     rx_status_label_->setVisible(tabbed);
-    if (tabbed) rx_status_label_->setText(rx_status_text_);
     if (split_action_ != nullptr) split_action_->setChecked(!tabbed);
     if (tabs_action_ != nullptr) tabs_action_->setChecked(tabbed);
 }
 
 void MainWindow::on_rx_status(const QString& text) {
     rx_status_text_ = text;
-    if (rx_status_label_->isVisible()) rx_status_label_->setText(text);
+    // Written unconditionally, *not* only while the label is visible.
+    // `QStatusBar` hides every non-permanent widget for the duration of
+    // a `showMessage` -- and this window posts one for five seconds
+    // after each saved reception. Skipping the update while hidden
+    // means an operator who presses Stop inside that window gets the
+    // message replaced by the line from *before* it, which in tabbed
+    // mode is their only view of a receiver that is no longer running.
+    rx_status_label_->setText(text);
     // The tab label carries the short form, because the status bar is
     // at the other end of the window from the tab the operator is
     // deciding whether to look at.

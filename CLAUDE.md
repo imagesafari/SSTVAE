@@ -337,7 +337,20 @@ by hand, not in a layout, so it imposes nothing upward — with 4:3 as
 what the box asks for (`sizeHint`) and caps itself at, never as a
 minimum. Given the height the picture is 4:3 and full width, as before;
 denied it the picture stays 4:3 and *narrows*, which the old code could
-not do at all because it simply forced the window taller instead. The
+not do at all because it simply forced the window taller instead.
+**`OverlayEditor` had the identical construct and it was worse**: the
+transmit panel's minimum height ran 611 px at 545 wide, 925 at 1348 and
+**1274 at 1900**, so tabs would have traded 498 px of width for
+hundreds of pixels of height on exactly the screens `auto` selects them
+for. Same fix, and it costs nothing there either, because
+`canvas_rect()` already letterboxes in both directions. Both copies are
+mutation-tested (`test_picture_box.cpp`, `test_overlay_editor.cpp`) and
+both assert on a *container's* minimum rather than the widget's own
+size hint — the hint is a constant, so asserting on it is a tautology,
+and the effective minimum is what propagates into the window.
+`sstvae-gui-shot --panes` reports **both axes** for the same reason: a
+width-only number measures the axis this layout improves and stays
+silent on the one it can wreck. The
 cap is necessarily one pass behind the width (Qt clamps incoming
 geometry against the previous maximum), which `updateGeometry` closes —
 and `test_picture_box.cpp` drives two passes deliberately rather than

@@ -23,6 +23,7 @@
 #include <QStringList>
 #include <QTabWidget>
 
+#include <cmath>
 #include <cstdio>
 #include <string>
 
@@ -209,18 +210,25 @@ int main(int argc, char** argv) {
 
         const QString split_path = QStringLiteral("%1/panes-split.png").arg(out);
         container.grab().save(split_path);
-        const int split_min = container.minimumSizeHint().width();
-        std::printf("%s (min width %d)\n", split_path.toLocal8Bit().constData(),
-                    split_min);
+        const QSize split_min = container.minimumSizeHint();
+        std::printf("%s (min %dx%d)\n", split_path.toLocal8Bit().constData(),
+                    split_min.width(), split_min.height());
 
         container.set_mode(sstvae::gui::PaneLayout::Tabs);
         app.processEvents();
         const QString tabs_path = QStringLiteral("%1/panes-tabs.png").arg(out);
         container.grab().save(tabs_path);
-        const int tabs_min = container.minimumSizeHint().width();
-        std::printf("%s (min width %d, %d px narrower)\n",
-                    tabs_path.toLocal8Bit().constData(), tabs_min,
-                    split_min - tabs_min);
+        const QSize tabs_min = container.minimumSizeHint();
+        // **Both axes.** Reporting only the width measures the axis this
+        // layout improves and stays silent on the one it can wreck: a
+        // pane that pins its height to its width (see `picture_box.hpp`)
+        // does its worst damage exactly when a tab hands it the whole
+        // window, which is the case a width-only number cannot see.
+        std::printf("%s (min %dx%d; %d px narrower, %d px %s)\n",
+                    tabs_path.toLocal8Bit().constData(), tabs_min.width(),
+                    tabs_min.height(), split_min.width() - tabs_min.width(),
+                    std::abs(split_min.height() - tabs_min.height()),
+                    tabs_min.height() > split_min.height() ? "TALLER" : "shorter");
     }
 
     // The framing dialog, on a 16:9 source -- the case it exists for,
