@@ -4,6 +4,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLayout>
+#include <QResizeEvent>
 #include <QSizePolicy>
 #include <QTabWidget>
 #include <QVBoxLayout>
@@ -163,19 +164,53 @@ void PaneContainer::set_control_strips(QWidget* first_strip, QWidget* second_str
     equalise_strips();
 }
 
+// What a strip needs *at the width it has*.
+//
+// Not `sizeHint()`: the rows inside wrap, so a strip's height is a
+// function of its width, and `sizeHint` on a wrapping layout reports a
+// single line. Reading it gave both strips a one-row minimum and let
+// their real heights diverge -- which put the two pictures back to
+// different sizes at exactly the narrow widths the wrapping was added
+// to rescue.
+static int strip_height_for_width(QWidget* strip) {
+    QLayout* layout = strip->layout();
+    if (layout != nullptr && layout->hasHeightForWidth() && strip->width() > 0) {
+        return layout->minimumHeightForWidth(strip->width());
+    }
+    return strip->sizeHint().height();
+}
+
 void PaneContainer::equalise_strips() {
     QWidget* a = first_strip_.data();
     QWidget* b = second_strip_.data();
     if (a == nullptr || b == nullptr) return;
-    // The *hint*, not the current height. The current height is already
-    // whatever the last pass of this gave it, so reading it back would
-    // ratchet upward on every call; `sizeHint` is what the strip wants
-    // on its own merits and does not move when a minimum is set.
-    const int tallest = std::max(a->sizeHint().height(), b->sizeHint().height());
+    // Released first, then measured, then applied: carrying the last
+    // pass's minimum into this one would ratchet the strips taller on
+    // every resize and never let them shrink back.
+    a->setMinimumHeight(0);
+    b->setMinimumHeight(0);
+    const int tallest =
+        std::max(strip_height_for_width(a), strip_height_for_width(b));
     if (tallest <= 0) return;
-    for (QWidget* strip : {a, b}) {
-        if (strip->minimumHeight() != tallest) strip->setMinimumHeight(tallest);
-    }
+    a->setMinimumHeight(tallest);
+    b->setMinimumHeight(tallest);
+}
+
+void PaneContainer::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    // Queued: a resize event arrives *before* Qt lays the children out,
+    // so measuring here would read the previous pass's widths -- and
+    // strip height now depends on width. One in flight at a time, since
+    // a drag emits a resize per pixel.
+    if (equalise_queued_) return;
+    equalise_queued_ = true;
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+            equalise_queued_ = false;
+            equalise_strips();
+        },
+        Qt::QueuedConnection);
 }
 
 void PaneContainer::set_first_note(const QString& note) {

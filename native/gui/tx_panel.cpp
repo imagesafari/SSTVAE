@@ -20,6 +20,7 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QSlider>
 #include <QSplitter>
 #include <QStyle>
@@ -42,6 +43,7 @@
 #include "config.hpp"
 #include "crop_dialog.hpp"
 #include "images/images.hpp"
+#include "flow_layout.hpp"
 #include "overlay_editor.hpp"
 #include "settings/settings.hpp"
 
@@ -273,8 +275,13 @@ void TransmitPanel::build_ui() {
     // "PTT OFF FAILED ... unkey it manually" was replaced by "Sent"
     // within a second. Errors now also land here and stay until
     // dismissed or the next send starts cleanly.
+    // **Over the picture, not above it.** In the layout it displaced
+    // everything below it -- so an error in one pane pushed that pane's
+    // picture down and the two stopped lining up, which is precisely
+    // what the equal-size work exists to prevent. Floating it costs no
+    // layout at all: it appears, it is dismissed, and nothing moves.
     banner_ = new ErrorBanner(this);
-    layout->addWidget(banner_);
+    banner_->hide();
 
     editor_ = new OverlayEditor(this);
     connect(editor_, &OverlayEditor::selectionChanged, this,
@@ -294,7 +301,7 @@ void TransmitPanel::build_ui() {
     // Stretch 1 and no trailing spacer: the canvas is what the spare
     // room is for. Everything else goes in the strip, whose height is
     // matched against the receive pane's.
-    layout->addWidget(editor_, 1);
+    layout->addWidget(editor_);
 
     strip_ = new QWidget(this);
     auto* strip_layout = new QVBoxLayout(strip_);
@@ -319,8 +326,8 @@ void TransmitPanel::build_ui() {
 // nested titled boxes in a row would cost more height than the buttons.
 QWidget* TransmitPanel::build_tool_row() {
     auto* panel = new QWidget(this);
-    auto* column = new QHBoxLayout(panel);
-    column->setContentsMargins(0, 0, 0, 0);
+    // Wraps rather than crushes -- see flow_layout.hpp.
+    auto* column = new FlowLayout(panel);
 
     auto* source = panel;
     auto* source_layout = column;
@@ -342,7 +349,7 @@ QWidget* TransmitPanel::build_tool_row() {
     image_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     source_layout->addWidget(choose_button_);
     source_layout->addWidget(frame_button_);
-    source_layout->addWidget(image_label_, 1);
+    source_layout->addWidget(image_label_);
 
     auto* rule = new QFrame(panel);
     rule->setFrameShape(QFrame::VLine);
@@ -394,7 +401,6 @@ QWidget* TransmitPanel::build_tool_row() {
     // the transmit pane's minimum width. That is most of the imbalance
     // that made the two pictures unequal: 1088 px against the receive
     // pane's 464.
-    column->addStretch(1);
     return panel;
 }
 
@@ -403,7 +409,9 @@ QGroupBox* TransmitPanel::build_properties(QWidget* parent) {
     box->setEnabled(false);
     // Horizontal: a form stacks its rows, which under the canvas would
     // cost five rows of height. Side by side it is one.
-    auto* form = new QHBoxLayout(box);
+    // Wrapping, for the same reason as the tool row: five fields on a
+    // half-width pane is exactly where a single line gives up.
+    auto* form = new FlowLayout(box);
 
     // Multi-line: a station's callsign, grid and name belong to one
     // item, not three stacked by hand. Enter inserts a newline, so Tab
@@ -432,7 +440,7 @@ QGroupBox* TransmitPanel::build_properties(QWidget* parent) {
         }
     });
     form->addWidget(new QLabel(tr("Text"), box));
-    form->addWidget(text_edit_, 1);
+    form->addWidget(text_edit_);
 
     align_combo_ = new QComboBox(box);
     align_combo_->addItem(tr("Left"), QStringLiteral("left"));
@@ -499,7 +507,9 @@ QGroupBox* TransmitPanel::build_properties(QWidget* parent) {
 
 QWidget* TransmitPanel::build_send_bar() {
     auto* bar = new QWidget(this);
-    auto* layout = new QHBoxLayout(bar);
+    // Wraps: the mode name, the level slider, Send, Cancel and the
+    // status field do not fit one line on a narrow pane.
+    auto* layout = new FlowLayout(bar);
     layout->setContentsMargins(0, 0, 0, 0);
 
     mode_combo_ = new QComboBox(bar);
@@ -584,7 +594,7 @@ QWidget* TransmitPanel::build_send_bar() {
     layout->addWidget(level_label_);
     layout->addWidget(send_button_);
     layout->addWidget(cancel_button_);
-    layout->addWidget(progress_, 1);
+    layout->addWidget(progress_);
     layout->addWidget(status_);
     return bar;
 }
@@ -853,6 +863,19 @@ void TransmitPanel::on_selection(overlay::Item* item) {
 
 // --- transmitting -----------------------------------------------------------
 
+void TransmitPanel::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    place_banner();
+}
+
+void TransmitPanel::place_banner() {
+    if (banner_ == nullptr || editor_ == nullptr) return;
+    const QRect over = editor_->geometry();
+    banner_->setGeometry(over.x(), over.y(), over.width(),
+                         std::max(1, banner_->sizeHint().height()));
+    banner_->raise();
+}
+
 bool TransmitPanel::transmitting() const { return running_.load(); }
 
 void TransmitPanel::send() {
@@ -1019,6 +1042,7 @@ void TransmitPanel::on_error(const QString& message) {
     // so a long error there inflates the send bar's minimum width --
     // rendered proof: a 700 px gui-shot request came back 1204 px wide
     // with the PTT message in the label.
+    place_banner();
     banner_->show_error(message);
     app_->log_event("tx", log::Severity::Error, message);
 }

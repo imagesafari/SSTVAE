@@ -243,9 +243,15 @@ void OverlayEditor::paintEvent(QPaintEvent*) {
         // same fill and the same disabled text as `PictureBox`, which
         // is the receive side's empty state, so the pair is symmetric
         // before either has a picture in it.
+        // Viewport, then the 4:3 frame inside it -- the composer has to
+        // show the shape it will send before anything is in it, for the
+        // same reason the receive box does.
         painter.fillRect(this->rect(), EMPTY_CANVAS);
+        painter.fillRect(rect, QColor(0x31, 0x31, 0x3a));
+        painter.setPen(QColor(0x55, 0x55, 0x61));
+        painter.drawRect(rect.adjusted(0, 0, -1, -1));
         painter.setPen(EMPTY_CANVAS_TEXT);
-        painter.drawText(this->rect(), Qt::AlignCenter, tr("Choose a picture to send"));
+        painter.drawText(rect, Qt::AlignCenter, tr("Choose a picture to send"));
         return;
     }
 

@@ -4,7 +4,10 @@
 #include <QComboBox>
 #include <QFontDatabase>
 #include <QGuiApplication>
+#include <QDockWidget>
 #include <QHBoxLayout>
+#include <QStyle>
+#include <QToolButton>
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -32,25 +35,28 @@ LogPane::LogPane(const log::StatusLog* log, QWidget* parent)
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(2);
 
-    auto* header = new QHBoxLayout();
-    header->setContentsMargins(4, 2, 4, 0);
-    header->addWidget(new QLabel(tr("Filter:"), this));
-    filter_ = new QComboBox(this);
+    // Kept as a widget rather than a bare layout, so it can be lifted
+    // out and used as the dock's title bar (see `take_title_row`).
+    header_ = new QWidget(this);
+    auto* header = new QHBoxLayout(header_);
+    header->setContentsMargins(4, 2, 4, 2);
+    header->addWidget(new QLabel(tr("Filter:"), header_));
+    filter_ = new QComboBox(header_);
     for (const char* name : FILTERS) {
         filter_->addItem(QString::fromLatin1(name));
     }
     connect(filter_, &QComboBox::currentIndexChanged, this, &LogPane::refill);
     header->addWidget(filter_);
 
-    file_note_ = new QLabel(this);
+    file_note_ = new QLabel(header_);
     file_note_->setWordWrap(false);
     header->addWidget(file_note_, 1);
 
-    auto* copy = new QPushButton(tr("Copy"), this);
+    auto* copy = new QPushButton(tr("Copy"), header_);
     copy->setToolTip(tr("Copy the whole log (unfiltered) to the clipboard"));
     connect(copy, &QPushButton::clicked, this, &LogPane::copy_all);
     header->addWidget(copy);
-    layout->addLayout(header);
+    layout->addWidget(header_);
 
     text_ = new QPlainTextEdit(this);
     text_->setReadOnly(true);
@@ -125,6 +131,31 @@ void LogPane::refill() {
     for (const log::Entry& entry : log_->snapshot()) {
         if (passes_filter(entry.source)) append_line(entry);
     }
+}
+
+QWidget* LogPane::take_title_row(const QString& title, QDockWidget* dock) {
+    auto* row = qobject_cast<QHBoxLayout*>(header_->layout());
+    if (row == nullptr) return nullptr;
+    // The dock's name goes at the front, bold, where a title bar's would
+    // be; the close button at the end, where one belongs.
+    auto* name = new QLabel(title, header_);
+    QFont bold = name->font();
+    bold.setBold(true);
+    name->setFont(bold);
+    row->insertWidget(0, name);
+
+    auto* close = new QToolButton(header_);
+    close->setAutoRaise(true);
+    close->setIcon(style()->standardIcon(QStyle::SP_TitleBarCloseButton));
+    close->setToolTip(tr("Hide the status log (View > Status log brings it back)"));
+    connect(close, &QToolButton::clicked, dock, &QDockWidget::close);
+    row->addWidget(close);
+
+    // Reparented to the dock by setTitleBarWidget; taking it out of our
+    // own layout first keeps the pane from reserving space for a row it
+    // no longer owns.
+    header_->setParent(nullptr);
+    return header_;
 }
 
 void LogPane::copy_all() {

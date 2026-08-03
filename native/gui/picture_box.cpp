@@ -2,6 +2,7 @@
 
 #include <QLabel>
 #include <QPalette>
+#include <QPainter>
 #include <QResizeEvent>
 #include <QSizePolicy>
 
@@ -70,6 +71,22 @@ void PictureBox::resizeEvent(QResizeEvent* event) {
     // staleness trap: by this point the label's geometry is the one it
     // will keep.
     rescale();
+}
+
+void PictureBox::paintEvent(QPaintEvent* event) {
+    QWidget::paintEvent(event);
+    if (!source_.isNull()) return;  // the picture is its own frame
+
+    QPainter painter(this);
+    const QRect frame = label_->geometry();
+    // A shade lighter than the viewport, plus a hairline: enough to read
+    // as "the picture goes here" without competing with a picture once
+    // one arrives. Colours from the palette this widget already carries,
+    // never a stylesheet -- one stylesheet anywhere re-styles every combo
+    // and spin box in the application.
+    painter.fillRect(frame, QColor(0x31, 0x31, 0x3a));
+    painter.setPen(QColor(0x55, 0x55, 0x61));
+    painter.drawRect(frame.adjusted(0, 0, -1, -1));
 }
 
 void PictureBox::rescale() {

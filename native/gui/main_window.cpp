@@ -10,7 +10,9 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QActionGroup>
+#include <QPainter>
 #include <QSplitter>
+#include <QSplitterHandle>
 #include <QMessageBox>
 #include <QScreen>
 #include <QStatusBar>
@@ -35,6 +37,54 @@ namespace sstvae::gui {
 namespace {
 
 constexpr auto APP_NAME = "SSTVAE";
+
+// The spectrum strip before anyone has dragged it. Deliberately
+// shallow: at 150 px most of it was black most of the time, and the
+// height is worth more to the pictures.
+constexpr int DEFAULT_WATERFALL_H = 96;
+
+// A splitter handle that looks like one.
+//
+// Qt's default handle is a flat gap: on a dark theme it is invisible,
+// so the waterfall was resizable with nothing on screen saying so. Three
+// short dashes in the middle is the plain desktop idiom for a grip, and
+// painting it keeps us out of stylesheets -- one stylesheet anywhere
+// makes Qt wrap the application style and strips the padding from every
+// combo and spin box in the app.
+class GripHandle : public QSplitterHandle {
+public:
+    GripHandle(Qt::Orientation orientation, QSplitter* parent)
+        : QSplitterHandle(orientation, parent) {
+        setCursor(orientation == Qt::Horizontal ? Qt::SplitHCursor : Qt::SplitVCursor);
+    }
+
+protected:
+    void paintEvent(QPaintEvent* event) override {
+        QSplitterHandle::paintEvent(event);
+        QPainter painter(this);
+        painter.setPen(QPen(palette().color(QPalette::Mid), 1));
+        const int cx = width() / 2;
+        const int cy = height() / 2;
+        // Three marks, 6 px long, 3 px apart, across the drag axis.
+        for (int i = -1; i <= 1; ++i) {
+            if (orientation() == Qt::Vertical) {
+                painter.drawLine(cx - 12 + i * 12, cy, cx - 6 + i * 12, cy);
+            } else {
+                painter.drawLine(cx, cy - 12 + i * 12, cx, cy - 6 + i * 12);
+            }
+        }
+    }
+};
+
+class GripSplitter : public QSplitter {
+public:
+    using QSplitter::QSplitter;
+
+protected:
+    QSplitterHandle* createHandle() override {
+        return new GripHandle(orientation(), this);
+    }
+};
 
 }  // namespace
 
@@ -109,7 +159,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // was removed to lock the panes equal -- that one decided which
     // pane won, and this one only decides how much spectrum history is
     // on screen.
-    stack_ = new QSplitter(Qt::Vertical, this);
+    stack_ = new GripSplitter(Qt::Vertical, this);
     stack_->addWidget(waterfall_);
     stack_->addWidget(panes_);
     stack_->setStretchFactor(0, 0);
@@ -321,14 +371,17 @@ void MainWindow::restore_waterfall_height() {
     // 0 means the operator has never dragged it. Qt's own initial split
     // is a reasonable first answer, so leave it alone rather than
     // inventing a default that would then look like a chosen value.
-    if (wanted <= 0) return;
+    // Never dragged: pick a shallow default rather than letting Qt
+    // split the window evenly. The strip only needs enough rows to see
+    // a signal arrive -- history is what the handle is for.
+    const int height = wanted > 0 ? wanted : DEFAULT_WATERFALL_H;
     const int total = stack_->height();
     // Before the window is shown `height()` is not meaningful yet; the
     // sizes are applied anyway and Qt scales them to the real height on
     // the first layout, which is what makes this work from a
     // constructor.
-    const int rest = std::max(1, total - wanted);
-    stack_->setSizes({wanted, rest});
+    const int rest = std::max(1, total - height);
+    stack_->setSizes({height, rest});
 }
 
 void MainWindow::remember_waterfall_height() {
@@ -407,6 +460,13 @@ void MainWindow::build_log_dock() {
     connect(state_, &AppState::logEntry, log_pane_, &LogPane::append);
 
     log_dock_ = new QDockWidget(tr("Status log"), this);
+    // **One row, not two.** A QDockWidget's own title bar is a full row
+    // of height carrying nothing but a word and a close button, and the
+    // pane already had a row of its own for the filter and Copy. At the
+    // bottom of the window those two rows cost more than the log they
+    // introduce. The pane's row becomes the title bar, with the name
+    // and the close button folded into it.
+    log_dock_->setTitleBarWidget(log_pane_->take_title_row(tr("Status log"), log_dock_));
     // Closable so it can be put away; not floatable or movable -- it is
     // a log strip, not a tool window, and the bottom is its place.
     log_dock_->setFeatures(QDockWidget::DockWidgetClosable);

@@ -107,6 +107,10 @@ protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
 
+protected:
+    // Only to keep the error banner sitting over the top of the picture.
+    void resizeEvent(QResizeEvent* event) override;
+
 private slots:
     void on_optimizer_progress();
     void on_state(int phase, double progress, const QString& message);
@@ -118,6 +122,8 @@ private slots:
 
 private:
     void build_ui();
+    // Keeps the floating error banner across the top of the picture.
+    void place_banner();
     // Paint the current text colour onto the Colour button.
     void set_color_swatch(const QColor& color);
     // True while the picture is committed to a send in progress.

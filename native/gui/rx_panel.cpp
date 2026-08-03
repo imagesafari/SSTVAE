@@ -31,6 +31,7 @@
 #include "banner.hpp"
 #include "codec/codec.hpp"
 #include "images/images.hpp"
+#include "flow_layout.hpp"
 #include "picture_box.hpp"
 #include "settings/settings.hpp"
 #include "waterfall.hpp"
@@ -111,8 +112,13 @@ void ReceivePanel::build_ui() {
     // The error tier: sticky, dismissable, and never overwritten by the
     // 500 ms status refresh below -- which is exactly what happened to
     // every receive error before (visible for at most half a second).
+    // **Over the picture, not above it.** In the layout it displaced
+    // everything below it -- so an error in one pane pushed that pane's
+    // picture down and the two stopped lining up, which is precisely
+    // what the equal-size work exists to prevent. Floating it costs no
+    // layout at all: it appears, it is dismissed, and nothing moves.
     banner_ = new ErrorBanner(this);
-    layout->addWidget(banner_);
+    banner_->hide();
 
     // No inner "Picture" box: the pane itself is titled, and a group
     // box between the layout and the picture would swallow the room the
@@ -121,7 +127,7 @@ void ReceivePanel::build_ui() {
     // Stretch 1 and no trailing spacer: the picture *is* what the spare
     // room is for. Everything else lives in the strip below, whose
     // height is fixed by agreement with the transmit pane.
-    layout->addWidget(preview_, 1);
+    layout->addWidget(preview_);
 
     strip_ = new QWidget(this);
     auto* lower_layout = new QVBoxLayout(strip_);
@@ -153,7 +159,8 @@ void ReceivePanel::build_ui() {
     last_card_->setEnabled(false);  // reads as secondary until it has content
     lower_layout->addWidget(last_card_);
 
-    auto* controls = new QHBoxLayout();
+    // Wraps rather than crushes -- see flow_layout.hpp.
+    auto* controls = new FlowLayout();
     start_button_ = new QPushButton(tr("Start receiving"), this);
     connect(start_button_, &QPushButton::clicked, this, &ReceivePanel::start);
     stop_button_ = new QPushButton(tr("Stop"), this);
@@ -177,13 +184,25 @@ void ReceivePanel::build_ui() {
     controls->addWidget(save_button_);
     controls->addWidget(folder_button_);
     controls->addWidget(autosave_);
-    controls->addStretch(1);
     // Into the strip, not the panel: the strip is the unit whose height
     // is matched against the transmit pane's, so anything left outside
     // it would break the equality it exists to give.
     lower_layout->addLayout(controls);
 
     layout->addWidget(strip_);
+}
+
+void ReceivePanel::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    place_banner();
+}
+
+void ReceivePanel::place_banner() {
+    if (banner_ == nullptr || preview_ == nullptr) return;
+    const QRect over = preview_->geometry();
+    const int wanted = banner_->sizeHint().height();
+    banner_->setGeometry(over.x(), over.y(), over.width(), std::max(1, wanted));
+    banner_->raise();
 }
 
 bool ReceivePanel::listening() const { return running_.load(); }
@@ -214,8 +233,14 @@ bool ReceivePanel::start() {
     try {
         stream_ = std::make_unique<audio::qt::InputStream>(
             config.audio.input_device, *ring_, config::FS,
+            // Info, not an error. This says which device opened and at
+            // what rate; the resampler being in the path is normal (very
+            // little hardware is natively 8 kHz) and saying so in a
+            // sticky red banner told operators their setup was broken
+            // when it was working.
             [this](const std::string& message) {
-                emit errorOccurred(QString::fromStdString(message));
+                app_->log_event("rx", log::Severity::Info,
+                                QString::fromStdString(message));
             });
     } catch (const std::exception& e) {
         if (Waterfall* w = fall()) w->set_ring(nullptr);
@@ -555,6 +580,7 @@ void ReceivePanel::on_error(const QString& message) {
     // status label: that is the progress tier, the next 500 ms refresh
     // would overwrite it anyway, and a single-line label given a long
     // error inflates the panel's minimum width.
+    place_banner();
     banner_->show_error(message);
     app_->log_event("rx", log::Severity::Error, message);
 }
@@ -645,6 +671,7 @@ void ReceivePanel::fill_for_screenshot() {
     last_card_->setEnabled(true);
     save_button_->setEnabled(true);
     folder_button_->setEnabled(true);
+    place_banner();
     banner_->show_error(
         tr("could not save received image: read-only file system"));
 }

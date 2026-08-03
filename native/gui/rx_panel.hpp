@@ -126,6 +126,10 @@ signals:
     void receptionFinished(const QString& saved_path);
     void errorOccurred(const QString& message);
 
+protected:
+    // Only to keep the error banner sitting over the top of the picture.
+    void resizeEvent(QResizeEvent* event) override;
+
 private slots:
     void refresh_status();
     void on_reception(const QString& saved_path);
@@ -134,6 +138,8 @@ private slots:
 
 private:
     void build_ui();
+    // Keeps the floating error banner across the top of the picture.
+    void place_banner();
     // The one way the status line is written. A bare `status_->setText`
     // would leave the status bar's copy stale on whichever of the five
     // call sites someone forgot.

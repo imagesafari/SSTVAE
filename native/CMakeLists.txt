@@ -329,6 +329,7 @@ if(_want_gui)
   # layering rules forbid.
   add_library(sstvae_gui STATIC
     gui/main_window.cpp
+    gui/flow_layout.cpp
     gui/pane_container.cpp
     gui/picture_box.cpp
     gui/waterfall.cpp

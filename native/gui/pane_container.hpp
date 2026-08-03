@@ -107,12 +107,16 @@ public:
 signals:
     void modeChanged(PaneLayout mode);
 
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
 
 private:
     // Give both strips the taller one's height. Cheap and idempotent,
     // so it can be called again whenever a caption or a font could have
     // changed the answer.
     void equalise_strips();
+
 
     QWidget* build_split();
     QWidget* build_tabs();
@@ -137,6 +141,7 @@ private:
     QString second_title_;
     QString first_note_;
 
+    bool equalise_queued_ = false;
     PaneLayout mode_ = PaneLayout::Split;
 };
 

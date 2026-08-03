@@ -79,8 +79,15 @@ class InputStream {
 public:
     // `device_name` empty means the system default. Throws if capture
     // cannot be started.
+    // `on_opened` reports **what was actually obtained** -- the device
+    // and the rate it opened at, and whether our resampler is in the
+    // path. It is information, not a failure: anything that stops
+    // capture starting throws instead. It was called `on_error` and the
+    // receive panel duly raised a sticky red banner saying "DAX IQ 1 at
+    // 96000 Hz, resampled to 8000 Hz", which is the layer working
+    // exactly as designed and reads as a fault in the operator's setup.
     InputStream(const std::string& device_name, rx::RingBuffer& ring,
-                int samplerate = config::FS, Report on_error = {});
+                int samplerate = config::FS, Report on_opened = {});
     ~InputStream();
 
     InputStream(const InputStream&) = delete;

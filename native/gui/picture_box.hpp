@@ -60,6 +60,12 @@ public:
 
 protected:
     void resizeEvent(QResizeEvent* event) override;
+    // Draws the viewport and, inside it, the 4:3 frame the picture will
+    // occupy. **The frame has to be visible before there is a picture**:
+    // once the box started filling the pane there was nothing on screen
+    // showing where a 640x480 would land, so an empty pane gave no clue
+    // what shape it was going to be.
+    void paintEvent(QPaintEvent* event) override;
 
 private:
     void rescale();
