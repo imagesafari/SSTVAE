@@ -125,6 +125,8 @@ private:
     void rerender();
     // Where the canvas is drawn inside the widget, letter-boxed.
     QRect canvas_rect() const;
+    // See PictureBox::apply_height_cap -- same rule, same reason.
+    void apply_height_cap();
     // Widget point -> canvas pixel. Outside the canvas is still mapped;
     // callers check the rect.
     QPointF to_canvas(const QPointF& widget_point) const;

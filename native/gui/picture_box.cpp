@@ -33,10 +33,15 @@ QSize PictureBox::sizeHint() const {
 void PictureBox::set_height_limit(int limit) {
     if (height_limit_ == limit) return;
     height_limit_ = limit;
+    // **Recompute directly.** The first version called `resize(size())`
+    // to provoke a `resizeEvent`, which does nothing at all: Qt returns
+    // early when the size is unchanged. So releasing the bound never
+    // restored the natural cap, `equalise` measured the *previous* cap
+    // as the natural height, and the pictures ratcheted down to
+    // whatever the first measurement happened to be -- 298 px, at every
+    // window size. A no-op that looks like a refresh is the worst kind.
+    apply_height_cap();
     updateGeometry();
-    // Re-run the cap arithmetic against the new bound straight away,
-    // rather than waiting for a resize that may never come.
-    resize(size());
 }
 
 void PictureBox::set_picture(const QPixmap& picture) {
@@ -49,23 +54,7 @@ QRect PictureBox::picture_rect() const { return label_->geometry(); }
 void PictureBox::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
 
-    // A *maximum*, never a minimum. Past 4:3 the extra height is grey
-    // margin above and below the picture, which is the shape that was
-    // objected to in the first place -- but capping is safe where
-    // `setFixedHeight` was not, because a maximum imposes nothing on
-    // the window and the surplus simply flows to whatever is below.
-    //
-    // The cap is derived from the width, so it is necessarily one pass
-    // behind it: Qt clamps the incoming geometry against the *previous*
-    // maximum before this runs. `updateGeometry` is what closes that --
-    // it asks the layout for another pass, in which the new cap applies.
-    // The guard keeps that to one extra pass rather than a loop.
-    int cap = std::max(MIN_H, width() * images::IMG_H / images::IMG_W);
-    if (height_limit_ > 0) cap = std::min(cap, std::max(MIN_H, height_limit_));
-    if (maximumHeight() != cap) {
-        setMaximumHeight(cap);
-        updateGeometry();
-    }
+    apply_height_cap();
 
     // The largest 4:3 rectangle that fits, centred.
     int w = width();
@@ -81,6 +70,24 @@ void PictureBox::resizeEvent(QResizeEvent* event) {
     // the staleness trap in the header's second bullet: by this point
     // the label's geometry is the one it will keep.
     rescale();
+}
+
+// A *maximum*, never a minimum. Past 4:3 the extra height is grey
+// margin above and below the picture, which is the shape that was
+// objected to in the first place -- but capping is safe where
+// `setFixedHeight` was not, because a maximum imposes nothing on the
+// window and the surplus simply flows to whatever is below.
+//
+// The cap is derived from the width, so it is necessarily one pass
+// behind it: Qt clamps the incoming geometry against the *previous*
+// maximum before this runs. `updateGeometry` is what closes that.
+void PictureBox::apply_height_cap() {
+    int cap = std::max(MIN_H, width() * images::IMG_H / images::IMG_W);
+    if (height_limit_ > 0) cap = std::min(cap, std::max(MIN_H, height_limit_));
+    if (maximumHeight() != cap) {
+        setMaximumHeight(cap);
+        updateGeometry();
+    }
 }
 
 void PictureBox::rescale() {

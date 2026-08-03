@@ -133,6 +133,10 @@ private:
     QString second_title_;
     QString first_note_;
 
+    // One deferred equalise in flight at a time; a drag emits a
+    // resize per pixel and each would otherwise queue its own.
+    bool equalise_queued_ = false;
+
     PaneLayout mode_ = PaneLayout::Split;
 };
 

@@ -73,8 +73,19 @@ OverlayEditor::~OverlayEditor() = default;
 void OverlayEditor::set_height_limit(int limit) {
     if (height_limit_ == limit) return;
     height_limit_ = limit;
+    // Directly, not through a fake resize -- `resize(size())` is a
+    // no-op in Qt. See PictureBox::set_height_limit for what that cost.
+    apply_height_cap();
     updateGeometry();
-    resize(size());
+}
+
+void OverlayEditor::apply_height_cap() {
+    int cap = std::max(120, width() * overlay::CANVAS_H / overlay::CANVAS_W);
+    if (height_limit_ > 0) cap = std::min(cap, std::max(120, height_limit_));
+    if (maximumHeight() != cap) {
+        setMaximumHeight(cap);
+        updateGeometry();
+    }
 }
 
 QSize OverlayEditor::sizeHint() const {
@@ -378,15 +389,7 @@ void OverlayEditor::resizeEvent(QResizeEvent* event) {
     // letterboxes in *both* directions, so a pane too short for 4:3
     // draws a smaller centred canvas rather than a stretched one, and
     // the handles follow it because they come from the same rectangle.
-    int cap = std::max(120, width() * overlay::CANVAS_H / overlay::CANVAS_W);
-    if (height_limit_ > 0) cap = std::min(cap, std::max(120, height_limit_));
-    if (maximumHeight() != cap) {
-        setMaximumHeight(cap);
-        // The cap trails the width by one pass (Qt clamps incoming
-        // geometry against the previous maximum); this asks the layout
-        // for the pass in which the new one applies.
-        updateGeometry();
-    }
+    apply_height_cap();
 }
 
 void OverlayEditor::keyPressEvent(QKeyEvent* event) {

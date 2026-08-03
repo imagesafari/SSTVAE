@@ -284,7 +284,12 @@ void TransmitPanel::build_ui() {
     // so the two pictures could never be the same size however the
     // splitter was weighted -- and the received picture is the one you
     // cannot get back, so it is the one that should not lose.
-    layout->addWidget(editor_);
+    // Stretch 10, matching the receive pane's picture: without it the
+    // trailing spacer below took the surplus and the canvas stopped at
+    // its 640x480 sizeHint, so the two pictures agreed at every window
+    // size and both stopped growing at 480 px. Bounded either way --
+    // the editor caps itself at 4:3.
+    layout->addWidget(editor_, 10);
     layout->addWidget(build_tool_row());
     properties_ = build_properties(this);
     // Hidden rather than merely disabled: beside the canvas an empty

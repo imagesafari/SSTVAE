@@ -21,6 +21,7 @@
 #include <QApplication>
 #include <QPixmap>
 #include <QStringList>
+#include <QLayout>
 #include <QTabWidget>
 
 #include <cmath>
@@ -238,6 +239,30 @@ int main(int argc, char** argv) {
                     tabs_min.height(), split_min.width() - tabs_min.width(),
                     std::abs(split_min.height() - tabs_min.height()),
                     tabs_min.height() > split_min.height() ? "TALLER" : "shorter");
+
+        // **The third number, and the one that actually broke a
+        // window.** A minimum size *hint* never consults
+        // `heightForWidth`; what Qt applies when it lays a widget out
+        // is `minimumHeightForWidth(width)`. A widget asking to be 4:3
+        // through that shows up here and nowhere else -- and a
+        // QSplitter hides it while a QTabWidget passes it to the
+        // window, which is how the tabbed layout grew past the bottom
+        // of the screen. Zero is the answer that should stay.
+        for (const auto mode : {sstvae::gui::PaneLayout::Split,
+                                sstvae::gui::PaneLayout::Tabs}) {
+            container.set_mode(mode);
+            for (int k = 0; k < 3; ++k) {
+                container.setGeometry(0, 0, container.width(), container.height());
+                app.processEvents();
+            }
+            const int hfw = container.layout()->hasHeightForWidth()
+                                ? container.layout()->minimumHeightForWidth(container.width())
+                                : 0;
+            std::printf("%s: minimumHeightForWidth(%d) = %d%s\n",
+                        mode == sstvae::gui::PaneLayout::Split ? "split" : "tabs ",
+                        container.width(), hfw,
+                        hfw > container.height() ? "   <-- forces the window taller" : "");
+        }
     }
 
     // The whole window. Opt-in and last, because unlike everything
@@ -256,6 +281,25 @@ int main(int argc, char** argv) {
         win.grab().save(path);
         std::printf("%s (min %dx%d)\n", path.toLocal8Bit().constData(),
                     win.minimumSizeHint().width(), win.minimumSizeHint().height());
+        // **The regression this window actually had**: switching layout
+        // grew it past the bottom of the screen and switching back did
+        // not shrink it again, because Qt lowers a minimum without
+        // resizing. Toggle twice and the size must come back unchanged.
+        auto* panes = win.findChild<sstvae::gui::PaneContainer*>();
+        if (panes != nullptr) {
+            const QSize before = win.size();
+            for (const auto m : {sstvae::gui::PaneLayout::Tabs,
+                                 sstvae::gui::PaneLayout::Split}) {
+                panes->set_mode(m);
+                for (int i = 0; i < 20; ++i) app.processEvents();
+                std::printf("  after %-5s window %dx%d\n",
+                            m == sstvae::gui::PaneLayout::Tabs ? "tabs" : "split",
+                            win.width(), win.height());
+            }
+            std::printf("  %s\n", win.size() == before
+                                       ? "round trip: size unchanged"
+                                       : "ROUND TRIP CHANGED THE WINDOW SIZE");
+        }
     }
 
     // The framing dialog, on a 16:9 source -- the case it exists for,

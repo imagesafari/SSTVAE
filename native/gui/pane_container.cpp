@@ -168,7 +168,25 @@ void PaneContainer::set_picture_areas(QWidget* first_picture, QWidget* second_pi
 
 void PaneContainer::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
-    equalise();
+    // **Queued, not immediate.** A resize event is delivered *before*
+    // Qt lays the children out, so measuring here reads the previous
+    // pass's geometry -- which is why the pictures sat at 298 px
+    // whatever the window did, their width tracking correctly while
+    // their height never moved. Deferring to the next turn of the event
+    // loop measures the layout that actually happened.
+    //
+    // It cannot loop: capping the pictures changes their geometry but
+    // not this widget's, so no second resize event follows.
+    if (!equalise_queued_) {
+        equalise_queued_ = true;
+        QMetaObject::invokeMethod(
+            this,
+            [this] {
+                equalise_queued_ = false;
+                equalise();
+            },
+            Qt::QueuedConnection);
+    }
 }
 
 void PaneContainer::equalise() {
@@ -178,9 +196,17 @@ void PaneContainer::equalise() {
     // Only meaningful when both are on screen; in tabs one page is
     // hidden and has no useful geometry, and there is nothing to match
     // it against anyway -- a tab gets the whole window either way.
+    auto* la = dynamic_cast<HeightLimited*>(a);
+    auto* lb = dynamic_cast<HeightLimited*>(b);
+    if (la == nullptr || lb == nullptr) return;
     if (mode_ != PaneLayout::Split) {
-        a->setMaximumHeight(QWIDGETSIZE_MAX);
-        b->setMaximumHeight(QWIDGETSIZE_MAX);
+        // Release the *limit*, not just the resulting maximum. Clearing
+        // `maximumHeight` alone left `height_limit_` set, so the widget
+        // re-applied the old side-by-side bound on its very next resize
+        // and the tabbed picture stayed at the size it had been when it
+        // was sharing the window -- a small box in a large empty pane.
+        la->set_height_limit(0);
+        lb->set_height_limit(0);
         return;
     }
     // Recomputed from scratch every time, in three steps: release both
@@ -190,9 +216,6 @@ void PaneContainer::equalise() {
     // ratchet the pictures smaller on every resize and never let them
     // grow back, which is the same failure as a fixed height wearing a
     // different hat.
-    auto* la = dynamic_cast<HeightLimited*>(a);
-    auto* lb = dynamic_cast<HeightLimited*>(b);
-    if (la == nullptr || lb == nullptr) return;
     la->set_height_limit(0);
     lb->set_height_limit(0);
     for (QWidget* pane : {first_, second_}) {

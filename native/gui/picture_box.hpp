@@ -79,6 +79,10 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
 
 private:
+    // The height cap, from this box's own 4:3 rule and any external
+    // bound. Called on resize *and* when the bound changes -- see the
+    // .cpp for why a fake resize could not do the second job.
+    void apply_height_cap();
     void rescale();
 
     int height_limit_ = 0;  // 0 = none
