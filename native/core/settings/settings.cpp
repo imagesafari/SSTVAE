@@ -263,6 +263,16 @@ void read_transmit(const Reader& r, TransmitConfig& c) {
 
 void read_ui(const Reader& r, UiConfig& c) {
     r.get("layout", c.layout);
+    r.get("waterfall_height", c.waterfall_height);
+    // Negative is meaningless and a huge value would push the panes off
+    // the window; clamp quietly rather than refuse, since the only way
+    // to get one is to hand-edit the file.
+    if (c.waterfall_height < 0 || c.waterfall_height > 2000) {
+        r.notes.add(r.path("waterfall_height"),
+                    "is out of range (0-2000); ignoring " +
+                        std::to_string(c.waterfall_height));
+        c.waterfall_height = 0;
+    }
     // An unrecognised value falls back to "auto" *and says so*, rather
     // than being kept and quietly meaning "side by side" downstream --
     // this is the one setting whose wrong value makes the window
@@ -272,7 +282,7 @@ void read_ui(const Reader& r, UiConfig& c) {
                                           "'; expected auto, split or tabs");
         c.layout = "auto";
     }
-    r.report_unknown({"layout"});
+    r.report_unknown({"layout", "waterfall_height"});
 }
 
 // Empty string <-> JSON null, for the fields Python declares optional.
@@ -427,7 +437,7 @@ std::string to_json(const Config& c) {
          {{"mode", c.transmit.mode},
           {"level", c.transmit.level},
           {"optimize", c.transmit.optimize}}},
-        {"ui", {{"layout", c.ui.layout}}},
+        {"ui", {{"layout", c.ui.layout}, {"waterfall_height", c.ui.waterfall_height}}},
         {"version", c.version},
     };
     return root.dump(2) + "\n";

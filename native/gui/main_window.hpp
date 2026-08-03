@@ -38,6 +38,7 @@
 #include "pane_container.hpp"
 
 class QAction;
+class QSplitter;
 class QDockWidget;
 class QLabel;
 class QMenu;
@@ -86,9 +87,15 @@ private:
     void on_model_progress(qlonglong received, qlonglong total);
     void on_tx_state(int phase);
     void show_about();
+    // The waterfall's share of the window, persisted so a handle set
+    // once stays set. Saved on every drag rather than at exit, because
+    // an app that is killed still owes the operator their layout.
+    void restore_waterfall_height();
+    void remember_waterfall_height();
     void refresh_rig_error_age();
 
     AppState* state_ = nullptr;
+    QSplitter* stack_ = nullptr;
     PaneContainer* panes_ = nullptr;
     Waterfall* waterfall_ = nullptr;
     ReceivePanel* rx_panel_ = nullptr;

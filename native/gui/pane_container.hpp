@@ -79,9 +79,22 @@ public:
     PaneContainer(QWidget* first, QString first_title, QWidget* second,
                   QString second_title, QWidget* parent = nullptr);
 
-    // The two 4:3 picture areas, held to the same size. Optional: a
-    // test drives this class with plain widgets that have neither.
-    void set_picture_areas(QWidget* first_picture, QWidget* second_picture);
+    // The two panes' control strips, held to the same height.
+    //
+    // **This is how the pictures end up equal**, and it is the whole
+    // mechanism. The panes are already locked to the same width; make
+    // the controls beneath them the same height and each picture gets
+    // `pane - strip`, the same number on both sides, without anything
+    // being cut down to match.
+    //
+    // The approach this replaced measured the two *pictures* and shrank
+    // the larger to the smaller. That produced equal pictures and threw
+    // away the space it took -- 650x480 where 970x727 was available,
+    // the difference showing as grey margin. Equalising the thing that
+    // actually differs is both smaller and better.
+    //
+    // Optional: a test may drive this class with plain widgets.
+    void set_control_strips(QWidget* first_strip, QWidget* second_strip);
 
     PaneLayout mode() const { return mode_; }
     void set_mode(PaneLayout mode);
@@ -94,21 +107,12 @@ public:
 signals:
     void modeChanged(PaneLayout mode);
 
-protected:
-    void resizeEvent(QResizeEvent* event) override;
 
 private:
-    // **Hold both pictures to the same size.** Equal *panes* is not
-    // equal *pictures*: the two halves carry different controls below
-    // the picture, so the leftover height differs -- measured at
-    // 710x520 against 639x480 with the panes already exactly equal in
-    // width. Both boxes cap themselves at 4:3, so matching the height
-    // matches the whole rectangle.
-    //
-    // A maximum, never a fixed size: the same rule as everywhere else
-    // in this window. A fixed height here would put the taller pane's
-    // demand under the window and stop it shrinking again.
-    void equalise();
+    // Give both strips the taller one's height. Cheap and idempotent,
+    // so it can be called again whenever a caption or a font could have
+    // changed the answer.
+    void equalise_strips();
 
     QWidget* build_split();
     QWidget* build_tabs();
@@ -127,15 +131,11 @@ private:
 
     QWidget* first_ = nullptr;
     QWidget* second_ = nullptr;
-    QPointer<QWidget> first_picture_;
-    QPointer<QWidget> second_picture_;
+    QPointer<QWidget> first_strip_;
+    QPointer<QWidget> second_strip_;
     QString first_title_;
     QString second_title_;
     QString first_note_;
-
-    // One deferred equalise in flight at a time; a drag emits a
-    // resize per pixel and each would otherwise queue its own.
-    bool equalise_queued_ = false;
 
     PaneLayout mode_ = PaneLayout::Split;
 };

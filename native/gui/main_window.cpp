@@ -10,12 +10,15 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QActionGroup>
+#include <QSplitter>
 #include <QMessageBox>
 #include <QScreen>
 #include <QStatusBar>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
+
+#include <algorithm>
 
 #include "app_state.hpp"
 #include "log_pane.hpp"
@@ -54,8 +57,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // narrow screen, and what you give up there is seeing the band
     // while you compose. The strip is the cheapest way to keep it.
     waterfall_ = new Waterfall(this);
-    waterfall_->setMinimumHeight(90);
-    waterfall_->setMaximumHeight(150);
+    // A floor, and no ceiling: the operator sets the height now, and a
+    // maximum would silently ignore a value they had chosen.
+    waterfall_->setMinimumHeight(60);
 
     rx_panel_ = new ReceivePanel(state_);
     tx_panel_ = new TransmitPanel(state_);
@@ -74,9 +78,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // and a tab label in the other.
     panes_ = new PaneContainer(rx_panel_, tr("Receive"), tx_panel_, tr("Transmit"), this);
     // Equal panes are not equal pictures on their own -- the two halves
-    // carry different controls beneath, so the leftover height differs.
-    // The container holds both boxes to the smaller allowance.
-    panes_->set_picture_areas(rx_panel_->picture_area(), tx_panel_->picture_area());
+    // carry different controls beneath. Matching the *strips* is what
+    // makes the pictures match, without taking space off either.
+    panes_->set_control_strips(rx_panel_->control_strip(),
+                               tx_panel_->control_strip());
 
     // Half duplex: our own transmission must not be decoded back into a
     // received picture. Frequency polling pauses too -- the answer is
@@ -93,13 +98,30 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // The most recent picture becomes available as a transmit inset.
     connect(rx_panel_, &ReceivePanel::imageReceived, tx_panel_,
             &TransmitPanel::set_last_rx_image);
-    auto* central = new QWidget(this);
-    auto* central_layout = new QVBoxLayout(central);
-    central_layout->setContentsMargins(0, 0, 0, 0);
-    central_layout->setSpacing(4);
-    central_layout->addWidget(waterfall_);
-    central_layout->addWidget(panes_, 1);
-    setCentralWidget(central);
+    // **The waterfall's height is the operator's** (decided
+    // 2026-08-03). A fixed strip was the alternative and the
+    // recommendation; a handle won because 150 px is too much most of
+    // the time and not enough occasionally, and something set once
+    // costs nothing afterwards. The position is remembered in
+    // `ui.waterfall_height`.
+    //
+    // A vertical handle here is unrelated to the horizontal one that
+    // was removed to lock the panes equal -- that one decided which
+    // pane won, and this one only decides how much spectrum history is
+    // on screen.
+    stack_ = new QSplitter(Qt::Vertical, this);
+    stack_->addWidget(waterfall_);
+    stack_->addWidget(panes_);
+    stack_->setStretchFactor(0, 0);
+    stack_->setStretchFactor(1, 1);
+    // Neither half may be dragged out of existence: a waterfall of zero
+    // height reads as a broken capture, and the panes are the app.
+    stack_->setChildrenCollapsible(false);
+    stack_->setHandleWidth(6);
+    setCentralWidget(stack_);
+    restore_waterfall_height();
+    connect(stack_, &QSplitter::splitterMoved, this,
+            [this](int, int) { remember_waterfall_height(); });
 
     build_menu();
     build_status_bar();
@@ -292,6 +314,32 @@ void MainWindow::build_menu() {
     QAction* about = help->addAction(tr("&About SSTVAE"));
     about->setMenuRole(QAction::NoRole);  // as above: keep it in this menu
     connect(about, &QAction::triggered, this, &MainWindow::show_about);
+}
+
+void MainWindow::restore_waterfall_height() {
+    const int wanted = state_->config().ui.waterfall_height;
+    // 0 means the operator has never dragged it. Qt's own initial split
+    // is a reasonable first answer, so leave it alone rather than
+    // inventing a default that would then look like a chosen value.
+    if (wanted <= 0) return;
+    const int total = stack_->height();
+    // Before the window is shown `height()` is not meaningful yet; the
+    // sizes are applied anyway and Qt scales them to the real height on
+    // the first layout, which is what makes this work from a
+    // constructor.
+    const int rest = std::max(1, total - wanted);
+    stack_->setSizes({wanted, rest});
+}
+
+void MainWindow::remember_waterfall_height() {
+    const QList<int> sizes = stack_->sizes();
+    if (sizes.isEmpty()) return;
+    if (state_->config().ui.waterfall_height == sizes.front()) return;
+    state_->config().ui.waterfall_height = sizes.front();
+    // Saved on the drag rather than at exit: an app that is killed --
+    // or that crashes in a backend -- still owes the operator the
+    // layout they set.
+    state_->save_config();
 }
 
 void MainWindow::show_about() {

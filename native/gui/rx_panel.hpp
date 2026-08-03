@@ -76,9 +76,13 @@ public:
     // A `QPointer` goes null when the widget dies, which turns a
     // use-after-free at every exit into a no-op.
     Waterfall* fall() const { return waterfall_.data(); }
-    // The 4:3 picture area, so the container can hold it to the same
-    // size as the transmit pane's. See `PaneContainer::equalise`.
+    // The 4:3 picture area. Read by tests and by the screenshot tool;
+    // nothing sizes it from outside any more.
     QWidget* picture_area() const;
+    // Everything below the picture, as one widget, so the container can
+    // hold it to the same height as the transmit pane's strip -- which
+    // is what makes the two pictures the same size.
+    QWidget* control_strip() const;
 
     // Re-read the settings the panel mirrors in its own controls. The
     // autosave checkbox exists in both places, so a change made in the
@@ -146,6 +150,7 @@ private:
     // --- widgets
     ErrorBanner* banner_ = nullptr;
     PictureBox* preview_ = nullptr;
+    QWidget* strip_ = nullptr;
     QLabel* status_ = nullptr;
     QLabel* last_card_ = nullptr;
     QProgressBar* progress_ = nullptr;

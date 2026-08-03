@@ -210,11 +210,19 @@ int main(int argc, char** argv) {
         rx->fill_for_screenshot();
         sstvae::gui::PaneContainer container(rx, QStringLiteral("Receive"), tx,
                                              QStringLiteral("Transmit"));
-        container.set_picture_areas(rx->picture_area(), tx->picture_area());
+        container.set_control_strips(rx->control_strip(), tx->control_strip());
         container.resize(width > 0 ? width : 1360, height > 0 ? height : 760);
         container.show();
         app.processEvents();
 
+        // The strips are what make the pictures equal, so their heights
+        // belong next to the pictures': when the two differ, this says
+        // by how much and which way, instead of leaving it to be
+        // inferred from the picture sizes.
+        std::printf("strips:   receive %d  transmit %d%s\n",
+                    rx->control_strip()->height(), tx->control_strip()->height(),
+                    rx->control_strip()->height() == tx->control_strip()->height()
+                        ? "  (equal)" : "  <-- NOT EQUAL");
         std::printf("pictures: receive %dx%d  transmit %dx%d\n",
                     rx->picture_area()->width(), rx->picture_area()->height(),
                     tx->picture_area()->width(), tx->picture_area()->height());
@@ -247,7 +255,16 @@ int main(int argc, char** argv) {
         // through that shows up here and nowhere else -- and a
         // QSplitter hides it while a QTabWidget passes it to the
         // window, which is how the tabbed layout grew past the bottom
-        // of the screen. Zero is the answer that should stay.
+        // of the screen.
+        //
+        // **This is not expected to read zero**, and an earlier version
+        // of this comment said it was, which would have had the next
+        // person chasing a ratchet that is not there. Wrapped labels
+        // legitimately have a height that depends on width, and
+        // `QWidgetItem` reports a *preferred* heightForWidth where no
+        // minimum is defined. What matters is that the number does not
+        // grow with width -- that is the ratchet -- and that the round
+        // trip below leaves the window the size it was.
         for (const auto mode : {sstvae::gui::PaneLayout::Split,
                                 sstvae::gui::PaneLayout::Tabs}) {
             container.set_mode(mode);
@@ -285,6 +302,17 @@ int main(int argc, char** argv) {
         // grew it past the bottom of the screen and switching back did
         // not shrink it again, because Qt lowers a minimum without
         // resizing. Toggle twice and the size must come back unchanged.
+        {
+            auto* rxp = win.findChild<sstvae::gui::ReceivePanel*>();
+            auto* txp = win.findChild<sstvae::gui::TransmitPanel*>();
+            if (rxp != nullptr && txp != nullptr) {
+                const QSize a = rxp->picture_area()->size();
+                const QSize b = txp->picture_area()->size();
+                std::printf("  pictures: receive %dx%d  transmit %dx%d%s\n",
+                            a.width(), a.height(), b.width(), b.height(),
+                            a == b ? "  (equal)" : "  <-- NOT EQUAL");
+            }
+        }
         auto* panes = win.findChild<sstvae::gui::PaneContainer*>();
         if (panes != nullptr) {
             const QSize before = win.size();

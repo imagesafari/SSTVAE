@@ -63,9 +63,11 @@ public:
     ~TransmitPanel() override;
 
     bool transmitting() const;
-    // The 4:3 canvas, so the container can hold it to the same size as
-    // the receive pane's picture. See `PaneContainer::equalise`.
+    // The 4:3 canvas. Read by tests and by the screenshot tool.
     QWidget* picture_area() const;
+    // Everything below the canvas, as one widget, so the container can
+    // hold it to the same height as the receive pane's strip.
+    QWidget* control_strip() const;
 
 public slots:
     void send();
@@ -152,6 +154,7 @@ private:
     QString source_path_;
     images::Framing framing_;
 
+    QWidget* strip_ = nullptr;
     QGroupBox* properties_ = nullptr;
     QPlainTextEdit* text_edit_ = nullptr;
     QComboBox* align_combo_ = nullptr;

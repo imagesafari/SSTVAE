@@ -139,17 +139,24 @@ void test_it_stays_four_by_three_in_both_directions() {
     check::equal(tall.x(), (1400 - tall.width()) / 2, "the picture is centred");
 }
 
-void test_it_asks_for_four_by_three_but_caps_there() {
+void test_it_asks_for_four_by_three_and_imposes_nothing() {
     Host host;
     gui::PictureBox& box = host.sized(800, 600);
-    // The hint is what a layout gives it when there is room -- this is
-    // what keeps the split-pane appearance unchanged.
+    // The hint is what a layout gives it when there is room, which is
+    // what keeps a roomy pane showing a full-width picture.
     check::equal(box.sizeHint().height(), 800 * images::IMG_H / images::IMG_W,
                  "it asks for 4:3");
-    // And it refuses to be taller, so surplus height goes to the
-    // controls below rather than becoming grey margin.
-    check::equal(box.maximumHeight(), 800 * images::IMG_H / images::IMG_W,
-                 "and caps itself there");
+    // **And imposes nothing.** It used to cap its own height at 4:3,
+    // which was safe on its own and became a problem the moment a
+    // second cap existed: two caps on one property meant whichever
+    // resizeEvent ran last decided the size, and the two panes came out
+    // 523 px against 480. The box now fills whatever it is given and
+    // centres a 4:3 rectangle inside, so the only thing deciding its
+    // size is the layout.
+    check::equal(box.maximumHeight(), QWIDGETSIZE_MAX,
+                 "and caps nothing, so the layout is the only authority");
+    check::equal(box.minimumSizeHint().height(), gui::PictureBox::MIN_H,
+                 "with a floor that does not follow the width");
 }
 
 void test_a_picture_is_scaled_into_the_box() {
@@ -183,7 +190,7 @@ int main(int argc, char** argv) {
 
     test_the_minimum_never_follows_the_width();
     test_it_stays_four_by_three_in_both_directions();
-    test_it_asks_for_four_by_three_but_caps_there();
+    test_it_asks_for_four_by_three_and_imposes_nothing();
     test_a_picture_is_scaled_into_the_box();
 
     return check::report("picture box");

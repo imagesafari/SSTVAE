@@ -60,7 +60,10 @@ OverlayEditor::OverlayEditor(QWidget* parent) : QWidget(parent) {
     // which constrains nothing upward) and `canvas_rect()` letterboxes
     // in both directions, so the canvas is still exactly 4:3 at any
     // shape this widget is given.
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    // Expanding both ways: this is what absorbs the pane's spare
+    // room. It imposes no cap of its own -- `canvas_rect()` centres
+    // a 4:3 canvas in whatever it is given.
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     setMouseTracking(false);
     // Strong, not ClickFocus: the arrow keys and Delete are useless to
     // an operator who cannot get focus onto this widget, and ClickFocus
@@ -69,24 +72,6 @@ OverlayEditor::OverlayEditor(QWidget* parent) : QWidget(parent) {
 }
 
 OverlayEditor::~OverlayEditor() = default;
-
-void OverlayEditor::set_height_limit(int limit) {
-    if (height_limit_ == limit) return;
-    height_limit_ = limit;
-    // Directly, not through a fake resize -- `resize(size())` is a
-    // no-op in Qt. See PictureBox::set_height_limit for what that cost.
-    apply_height_cap();
-    updateGeometry();
-}
-
-void OverlayEditor::apply_height_cap() {
-    int cap = std::max(120, width() * overlay::CANVAS_H / overlay::CANVAS_W);
-    if (height_limit_ > 0) cap = std::min(cap, std::max(120, height_limit_));
-    if (maximumHeight() != cap) {
-        setMaximumHeight(cap);
-        updateGeometry();
-    }
-}
 
 QSize OverlayEditor::sizeHint() const {
     return QSize(overlay::CANVAS_W, overlay::CANVAS_H);
@@ -258,14 +243,15 @@ void OverlayEditor::paintEvent(QPaintEvent*) {
         // same fill and the same disabled text as `PictureBox`, which
         // is the receive side's empty state, so the pair is symmetric
         // before either has a picture in it.
-        painter.fillRect(this->rect(), palette().window());
-        painter.fillRect(rect, EMPTY_CANVAS);
+        painter.fillRect(this->rect(), EMPTY_CANVAS);
         painter.setPen(EMPTY_CANVAS_TEXT);
-        painter.drawText(rect, Qt::AlignCenter, tr("Choose a picture to send"));
+        painter.drawText(this->rect(), Qt::AlignCenter, tr("Choose a picture to send"));
         return;
     }
 
-    painter.fillRect(this->rect(), Qt::black);
+    // The same fill as the empty state, so the viewport around the
+    // canvas does not change colour the moment a picture arrives.
+    painter.fillRect(this->rect(), EMPTY_CANVAS);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     painter.drawImage(rect, to_qimage(composed_));
 
@@ -376,20 +362,18 @@ void OverlayEditor::mouseReleaseEvent(QMouseEvent* event) {
 
 void OverlayEditor::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
-    // A *maximum*, never a fixed height -- the same rule, and the same
-    // reason, as `PictureBox` (see picture_box.hpp). `setFixedHeight`
-    // here made the editor's minimum height follow its width, so the
-    // transmit pane raised a floor under the whole window that
-    // narrowing it never lowered: measured at 611 px minimum height on
-    // a 545 px pane, 925 at 1348 and **1274 at 1900**. Bounded while
-    // the splitter kept each pane narrow, and unbounded once a tab
-    // hands this pane the entire window.
+    // **Nothing here, deliberately.** This widget used to cap its own
+    // height at 4:3 -- first with `setFixedHeight`, which is a hard
+    // *minimum* and made a wide pane raise a window floor that
+    // narrowing never lowered (measured 611 px at 545 wide, 925 at
+    // 1348, 1274 at 1900); then with a maximum, which was safe but was
+    // still one of two caps on one property, so whichever `resizeEvent`
+    // ran last decided the size.
     //
-    // Nothing is given up by capping instead: `canvas_rect()` already
-    // letterboxes in *both* directions, so a pane too short for 4:3
-    // draws a smaller centred canvas rather than a stretched one, and
-    // the handles follow it because they come from the same rectangle.
-    apply_height_cap();
+    // Now the canvas is drawn *inside* the widget rather than being the
+    // widget, so none of it is needed: `canvas_rect()` letterboxes in
+    // both directions, the composer is exactly 4:3 at any shape this is
+    // handed, and nothing is imposed upward on the window.
 }
 
 void OverlayEditor::keyPressEvent(QKeyEvent* event) {

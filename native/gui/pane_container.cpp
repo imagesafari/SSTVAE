@@ -1,12 +1,9 @@
 #include "pane_container.hpp"
 
-#include "height_limited.hpp"
-
 #include <QFont>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLayout>
-#include <QResizeEvent>
 #include <QSizePolicy>
 #include <QTabWidget>
 #include <QVBoxLayout>
@@ -160,71 +157,25 @@ void PaneContainer::set_mode(PaneLayout mode) {
     emit modeChanged(mode_);
 }
 
-void PaneContainer::set_picture_areas(QWidget* first_picture, QWidget* second_picture) {
-    first_picture_ = first_picture;
-    second_picture_ = second_picture;
-    equalise();
+void PaneContainer::set_control_strips(QWidget* first_strip, QWidget* second_strip) {
+    first_strip_ = first_strip;
+    second_strip_ = second_strip;
+    equalise_strips();
 }
 
-void PaneContainer::resizeEvent(QResizeEvent* event) {
-    QWidget::resizeEvent(event);
-    // **Queued, not immediate.** A resize event is delivered *before*
-    // Qt lays the children out, so measuring here reads the previous
-    // pass's geometry -- which is why the pictures sat at 298 px
-    // whatever the window did, their width tracking correctly while
-    // their height never moved. Deferring to the next turn of the event
-    // loop measures the layout that actually happened.
-    //
-    // It cannot loop: capping the pictures changes their geometry but
-    // not this widget's, so no second resize event follows.
-    if (!equalise_queued_) {
-        equalise_queued_ = true;
-        QMetaObject::invokeMethod(
-            this,
-            [this] {
-                equalise_queued_ = false;
-                equalise();
-            },
-            Qt::QueuedConnection);
-    }
-}
-
-void PaneContainer::equalise() {
-    QWidget* a = first_picture_.data();
-    QWidget* b = second_picture_.data();
+void PaneContainer::equalise_strips() {
+    QWidget* a = first_strip_.data();
+    QWidget* b = second_strip_.data();
     if (a == nullptr || b == nullptr) return;
-    // Only meaningful when both are on screen; in tabs one page is
-    // hidden and has no useful geometry, and there is nothing to match
-    // it against anyway -- a tab gets the whole window either way.
-    auto* la = dynamic_cast<HeightLimited*>(a);
-    auto* lb = dynamic_cast<HeightLimited*>(b);
-    if (la == nullptr || lb == nullptr) return;
-    if (mode_ != PaneLayout::Split) {
-        // Release the *limit*, not just the resulting maximum. Clearing
-        // `maximumHeight` alone left `height_limit_` set, so the widget
-        // re-applied the old side-by-side bound on its very next resize
-        // and the tabbed picture stayed at the size it had been when it
-        // was sharing the window -- a small box in a large empty pane.
-        la->set_height_limit(0);
-        lb->set_height_limit(0);
-        return;
+    // The *hint*, not the current height. The current height is already
+    // whatever the last pass of this gave it, so reading it back would
+    // ratchet upward on every call; `sizeHint` is what the strip wants
+    // on its own merits and does not move when a minimum is set.
+    const int tallest = std::max(a->sizeHint().height(), b->sizeHint().height());
+    if (tallest <= 0) return;
+    for (QWidget* strip : {a, b}) {
+        if (strip->minimumHeight() != tallest) strip->setMinimumHeight(tallest);
     }
-    // Recomputed from scratch every time, in three steps: release both
-    // caps, let each pane lay out to the height it would naturally
-    // take, then cap both to the smaller. Releasing first is what stops
-    // this drifting -- carrying last pass's cap into this one would
-    // ratchet the pictures smaller on every resize and never let them
-    // grow back, which is the same failure as a fixed height wearing a
-    // different hat.
-    la->set_height_limit(0);
-    lb->set_height_limit(0);
-    for (QWidget* pane : {first_, second_}) {
-        if (pane->layout() != nullptr) pane->layout()->activate();
-    }
-    const int room = std::min(a->height(), b->height());
-    if (room <= 0) return;
-    la->set_height_limit(room);
-    lb->set_height_limit(room);
 }
 
 void PaneContainer::set_first_note(const QString& note) {

@@ -258,6 +258,8 @@ void TransmitPanel::on_optimizer_progress() {
 
 QWidget* TransmitPanel::picture_area() const { return editor_; }
 
+QWidget* TransmitPanel::control_strip() const { return strip_; }
+
 void TransmitPanel::build_ui() {
     // Dropping a file on the composer loads it -- the gesture every
     // other picture application answers, and the one an operator
@@ -289,16 +291,26 @@ void TransmitPanel::build_ui() {
     // its 640x480 sizeHint, so the two pictures agreed at every window
     // size and both stopped growing at 480 px. Bounded either way --
     // the editor caps itself at 4:3.
-    layout->addWidget(editor_, 10);
-    layout->addWidget(build_tool_row());
-    properties_ = build_properties(this);
-    // Hidden rather than merely disabled: beside the canvas an empty
-    // box cost nothing, but under it every row is height the picture
-    // could have had, and this one is meaningless without a selection.
-    properties_->hide();
-    layout->addWidget(properties_);
-    layout->addStretch(1);
-    layout->addWidget(build_send_bar());
+    // Stretch 1 and no trailing spacer: the canvas is what the spare
+    // room is for. Everything else goes in the strip, whose height is
+    // matched against the receive pane's.
+    layout->addWidget(editor_, 1);
+
+    strip_ = new QWidget(this);
+    auto* strip_layout = new QVBoxLayout(strip_);
+    strip_layout->setContentsMargins(0, 0, 0, 0);
+    strip_layout->setSpacing(4);
+    strip_layout->addWidget(build_tool_row());
+    properties_ = build_properties(strip_);
+    // **Always present, disabled when nothing is selected** -- not
+    // hidden. A row that appears on selection moves the picture under
+    // the cursor every time an item is clicked, which is the one thing
+    // a composing surface must not do. Its height is part of the strip
+    // and therefore part of what the receive pane matches.
+    properties_->setEnabled(false);
+    strip_layout->addWidget(properties_);
+    strip_layout->addWidget(build_send_bar());
+    layout->addWidget(strip_);
 }
 
 // One horizontal row of tools under the canvas, replacing the column
@@ -367,8 +379,16 @@ QWidget* TransmitPanel::build_tool_row() {
     for (QPushButton* button : {add_text, add_rx_button_, add_image, remove}) {
         overlay_layout->addWidget(button);
     }
-    column->addWidget(overlay_box);
-    // **The properties box is NOT built here.** `build_ui` owns it, so
+    // **No `column->addWidget(overlay_box)` here.** `overlay_box` is an
+    // alias for `panel`, whose layout `column` *is*, so that line asked
+    // Qt to add a widget to its own child layout. Qt refuses and prints
+    // "QLayout: Cannot add parent widget to its child layout" on every
+    // construction -- of the app, of the screenshot tool, of any test --
+    // while the four buttons had already been added by the loop above.
+    // A permanently dead line and a permanent warning in our own
+    // diagnostics.
+    //
+    // **The properties box is NOT built here either.** `build_ui` owns it, so
     // constructing a second one in this row left an orphan that nothing
     // ever updated -- and, because it sat in the row, it added 535 px to
     // the transmit pane's minimum width. That is most of the imbalance

@@ -24,6 +24,7 @@
 
 #include <QApplication>
 #include <QLabel>
+#include <QSizePolicy>
 #include <QPointer>
 #include <QSizePolicy>
 #include <QVBoxLayout>
@@ -140,6 +141,107 @@ void test_resolve_layout() {
                  "auto: an unmeasurable screen falls to side by side");
 }
 
+// A stand-in pane: a picture that takes the room, over a control strip
+// of a given height. The two real panes differ only in how tall their
+// strips are, which is exactly what this reproduces.
+struct Pane {
+    QWidget* root;
+    QWidget* picture;
+    QWidget* strip;
+};
+
+Pane make_pane(int strip_rows) {
+    auto* root = new QWidget;
+    auto* layout = new QVBoxLayout(root);
+    layout->setContentsMargins(0, 0, 0, 0);
+    auto* picture = new QWidget(root);
+    picture->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    picture->setMinimumSize(80, 60);
+    layout->addWidget(picture, 1);
+    auto* strip = new QWidget(root);
+    auto* strip_layout = new QVBoxLayout(strip);
+    strip_layout->setContentsMargins(0, 0, 0, 0);
+    for (int i = 0; i < strip_rows; ++i) {
+        auto* row = new QLabel(QStringLiteral("row"), strip);
+        row->setFixedHeight(20);
+        strip_layout->addWidget(row);
+    }
+    layout->addWidget(strip);
+    return {root, picture, strip};
+}
+
+// **The property the whole layout exists to provide**, and the one that
+// had no test while two bugs hid behind it: the two pictures are the
+// same size.
+//
+// It is asserted on *unequal* panes -- three control rows against one --
+// because equal-by-accident is exactly what a fixture of two identical
+// panes would prove. The real panes differ the same way: the composer
+// carries tools, properties and a send bar where the monitor carries a
+// status line, a card and its buttons.
+void test_the_two_pictures_are_the_same_size() {
+    Pane rx = make_pane(1);
+    Pane tx = make_pane(3);
+
+    gui::PaneContainer container(rx.root, QStringLiteral("Receive"), tx.root,
+                                 QStringLiteral("Transmit"));
+    container.set_control_strips(rx.strip, tx.strip);
+    container.show();
+
+    for (const QSize size : {QSize(1200, 700), QSize(1600, 900), QSize(900, 1100),
+                             QSize(2000, 620)}) {
+        for (int pass = 0; pass < 2; ++pass) {
+            container.setGeometry(0, 0, size.width(), size.height());
+            QCoreApplication::processEvents();
+        }
+        const std::string at = " at " + std::to_string(size.width()) + "x" +
+                               std::to_string(size.height());
+        check::equal(rx.strip->height(), tx.strip->height(),
+                     "the two control strips are the same height" + at);
+        check::equal(rx.picture->width(), tx.picture->width(),
+                     "the two pictures are the same width" + at);
+        check::equal(rx.picture->height(), tx.picture->height(),
+                     "the two pictures are the same height" + at);
+        // Not merely equal -- *large*. Shrinking both to a postage stamp
+        // would satisfy every assertion above, and is precisely the
+        // failure the previous implementation shipped.
+        check::is_true(rx.picture->height() > size.height() / 3,
+                       "and the picture uses the room it was given" + at);
+    }
+}
+
+// Equal sizes must survive the layout switch, which is where the last
+// implementation lost them: the mode change did not re-run the sizing,
+// so a picture kept the size it had while sharing the window.
+void test_sizes_survive_a_mode_round_trip() {
+    Pane rx = make_pane(1);
+    Pane tx = make_pane(3);
+    gui::PaneContainer container(rx.root, QStringLiteral("Receive"), tx.root,
+                                 QStringLiteral("Transmit"));
+    container.set_control_strips(rx.strip, tx.strip);
+    container.show();
+    for (int pass = 0; pass < 2; ++pass) {
+        container.setGeometry(0, 0, 1400, 800);
+        QCoreApplication::processEvents();
+    }
+    const QSize before = rx.picture->size();
+
+    container.set_mode(PaneLayout::Tabs);
+    QCoreApplication::processEvents();
+    container.set_mode(PaneLayout::Split);
+    for (int pass = 0; pass < 2; ++pass) {
+        container.setGeometry(0, 0, 1400, 800);
+        QCoreApplication::processEvents();
+    }
+
+    check::equal(rx.picture->width(), before.width(),
+                 "a round trip through tabs leaves the picture's width alone");
+    check::equal(rx.picture->height(), before.height(),
+                 "and its height");
+    check::equal(rx.picture->height(), tx.picture->height(),
+                 "and the two are still equal afterwards");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -150,6 +252,8 @@ int main(int argc, char** argv) {
     test_panels_survive_and_stay_visible();
     test_tabs_are_narrower_than_side_by_side();
     test_resolve_layout();
+    test_the_two_pictures_are_the_same_size();
+    test_sizes_survive_a_mode_round_trip();
 
     return check::report("pane container");
 }
