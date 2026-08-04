@@ -34,10 +34,12 @@
 #define SSTVAE_GUI_MAIN_WINDOW_HPP
 
 #include <QMainWindow>
+#include <QSize>
 
 #include "pane_container.hpp"
 
 class QAction;
+class QSplitter;
 class QDockWidget;
 class QLabel;
 class QMenu;
@@ -48,6 +50,7 @@ namespace sstvae::gui {
 class AppState;
 class LogPane;
 class ReceivePanel;
+class Waterfall;
 class TransmitPanel;
 
 class MainWindow : public QMainWindow {
@@ -73,6 +76,11 @@ private:
     void choose_layout(PaneLayout mode);
     // What the config and the screen between them say to start in.
     PaneLayout startup_layout() const;
+    // The screen's usable area, or an invalid size if the platform did
+    // not report one.
+    QSize available_screen() const;
+    // Shrink the window to the screen if it opened larger, and say so.
+    void fit_to_screen();
     void on_layout_changed(PaneLayout mode);
     // The receive status line, mirrored into the status bar while
     // tabbed -- see `on_rx_status`.
@@ -85,10 +93,17 @@ private:
     void on_model_progress(qlonglong received, qlonglong total);
     void on_tx_state(int phase);
     void show_about();
+    // The waterfall's share of the window, persisted so a handle set
+    // once stays set. Saved on every drag rather than at exit, because
+    // an app that is killed still owes the operator their layout.
+    void restore_waterfall_height();
+    void remember_waterfall_height();
     void refresh_rig_error_age();
 
     AppState* state_ = nullptr;
+    QSplitter* stack_ = nullptr;
     PaneContainer* panes_ = nullptr;
+    Waterfall* waterfall_ = nullptr;
     ReceivePanel* rx_panel_ = nullptr;
     TransmitPanel* tx_panel_ = nullptr;
     QLabel* ptt_label_ = nullptr;

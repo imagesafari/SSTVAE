@@ -20,6 +20,7 @@
 #include "log/log.hpp"
 
 class QComboBox;
+class QDockWidget;
 class QLabel;
 class QPlainTextEdit;
 
@@ -29,6 +30,11 @@ class LogPane : public QWidget {
     Q_OBJECT
 
 public:
+    // Hand the filter/Copy row back, with a name and a close button
+    // folded in, so it can serve as the dock's title bar. Saves a whole
+    // row of height at the bottom of the window -- see main_window.cpp.
+    QWidget* take_title_row(const QString& title, QDockWidget* dock);
+
     explicit LogPane(const log::StatusLog* log, QWidget* parent = nullptr);
 
     // ~5 log lines tall by default (the settled Q4 decision); the dock
@@ -52,6 +58,7 @@ private:
     void append_line(const log::Entry& entry);
 
     const log::StatusLog* log_ = nullptr;
+    QWidget* header_ = nullptr;
     QComboBox* filter_ = nullptr;
     QLabel* file_note_ = nullptr;
     QPlainTextEdit* text_ = nullptr;

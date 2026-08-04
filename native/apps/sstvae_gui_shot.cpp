@@ -21,6 +21,9 @@
 #include <QApplication>
 #include <QPixmap>
 #include <QStringList>
+#include <QLayout>
+#include <QLabel>
+#include <QProgressBar>
 #include <QTabWidget>
 
 #include <cmath>
@@ -32,6 +35,7 @@
 #include "crop_dialog.hpp"
 #include "log/log.hpp"
 #include "log_pane.hpp"
+#include "main_window.hpp"
 #include "pane_container.hpp"
 #include "rx_panel.hpp"
 #include "settings/settings.hpp"
@@ -50,6 +54,7 @@ void usage() {
                  "  --transmit   also shoot the transmit panel\n"
                  "  --receive    also shoot the receive panel\n"
                  "  --crop       also shoot the framing dialog\n"
+                 "  --window     also shoot the whole main window\n"
                  "  --log        also shoot the log pane and error banner\n"
                  "  --panes      also shoot both pane layouts, and report the\n"
                  "               minimum width each one imposes on the window\n"
@@ -85,6 +90,7 @@ int main(int argc, char** argv) {
     bool transmit = false;
     bool receive = false;
     bool crop = false;
+    bool window = false;
     bool log_widgets = false;
     bool panes = false;
 
@@ -109,6 +115,8 @@ int main(int argc, char** argv) {
             receive = true;
         } else if (arg == QLatin1String("--crop")) {
             crop = true;
+        } else if (arg == QLatin1String("--window")) {
+            window = true;
         } else if (arg == QLatin1String("--log")) {
             log_widgets = true;
         } else if (arg == QLatin1String("--panes")) {
@@ -204,10 +212,22 @@ int main(int argc, char** argv) {
         rx->fill_for_screenshot();
         sstvae::gui::PaneContainer container(rx, QStringLiteral("Receive"), tx,
                                              QStringLiteral("Transmit"));
+        container.set_control_strips(rx->control_strip(), tx->control_strip());
         container.resize(width > 0 ? width : 1360, height > 0 ? height : 760);
         container.show();
         app.processEvents();
 
+        // The strips are what make the pictures equal, so their heights
+        // belong next to the pictures': when the two differ, this says
+        // by how much and which way, instead of leaving it to be
+        // inferred from the picture sizes.
+        std::printf("strips:   receive %d  transmit %d%s\n",
+                    rx->control_strip()->height(), tx->control_strip()->height(),
+                    rx->control_strip()->height() == tx->control_strip()->height()
+                        ? "  (equal)" : "  <-- NOT EQUAL");
+        std::printf("pictures: receive %dx%d  transmit %dx%d\n",
+                    rx->picture_area()->width(), rx->picture_area()->height(),
+                    tx->picture_area()->width(), tx->picture_area()->height());
         const QString split_path = QStringLiteral("%1/panes-split.png").arg(out);
         container.grab().save(split_path);
         const QSize split_min = container.minimumSizeHint();
@@ -229,6 +249,87 @@ int main(int argc, char** argv) {
                     tabs_min.height(), split_min.width() - tabs_min.width(),
                     std::abs(split_min.height() - tabs_min.height()),
                     tabs_min.height() > split_min.height() ? "TALLER" : "shorter");
+
+        // **The third number, and the one that actually broke a
+        // window.** A minimum size *hint* never consults
+        // `heightForWidth`; what Qt applies when it lays a widget out
+        // is `minimumHeightForWidth(width)`. A widget asking to be 4:3
+        // through that shows up here and nowhere else -- and a
+        // QSplitter hides it while a QTabWidget passes it to the
+        // window, which is how the tabbed layout grew past the bottom
+        // of the screen.
+        //
+        // **This is not expected to read zero**, and an earlier version
+        // of this comment said it was, which would have had the next
+        // person chasing a ratchet that is not there. Wrapped labels
+        // legitimately have a height that depends on width, and
+        // `QWidgetItem` reports a *preferred* heightForWidth where no
+        // minimum is defined. What matters is that the number does not
+        // grow with width -- that is the ratchet -- and that the round
+        // trip below leaves the window the size it was.
+        for (const auto mode : {sstvae::gui::PaneLayout::Split,
+                                sstvae::gui::PaneLayout::Tabs}) {
+            container.set_mode(mode);
+            for (int k = 0; k < 3; ++k) {
+                container.setGeometry(0, 0, container.width(), container.height());
+                app.processEvents();
+            }
+            const int hfw = container.layout()->hasHeightForWidth()
+                                ? container.layout()->minimumHeightForWidth(container.width())
+                                : 0;
+            std::printf("%s: minimumHeightForWidth(%d) = %d%s\n",
+                        mode == sstvae::gui::PaneLayout::Split ? "split" : "tabs ",
+                        container.width(), hfw,
+                        hfw > container.height() ? "   <-- forces the window taller" : "");
+        }
+    }
+
+    // The whole window. Opt-in and last, because unlike everything
+    // else here it constructs a MainWindow, which starts a model load
+    // and opens the rig -- so it wants a warm model cache and rig
+    // control off, and a failure puts a modal on screen that a
+    // screenshot run cannot dismiss. Worth having anyway: the thing
+    // being decided *is* the window, and whether it fits a given screen
+    // height cannot be answered by shooting the panes separately.
+    if (window) {
+        sstvae::gui::MainWindow win;
+        win.resize(width > 0 ? width : 1360, height > 0 ? height : 900);
+        win.show();
+        for (int i = 0; i < 40; ++i) app.processEvents();
+        const QString path = QStringLiteral("%1/window.png").arg(out);
+        win.grab().save(path);
+        std::printf("%s (min %dx%d)\n", path.toLocal8Bit().constData(),
+                    win.minimumSizeHint().width(), win.minimumSizeHint().height());
+        // **The regression this window actually had**: switching layout
+        // grew it past the bottom of the screen and switching back did
+        // not shrink it again, because Qt lowers a minimum without
+        // resizing. Toggle twice and the size must come back unchanged.
+        {
+            auto* rxp = win.findChild<sstvae::gui::ReceivePanel*>();
+            auto* txp = win.findChild<sstvae::gui::TransmitPanel*>();
+            if (rxp != nullptr && txp != nullptr) {
+                const QSize a = rxp->picture_area()->size();
+                const QSize b = txp->picture_area()->size();
+                std::printf("  pictures: receive %dx%d  transmit %dx%d%s\n",
+                            a.width(), a.height(), b.width(), b.height(),
+                            a == b ? "  (equal)" : "  <-- NOT EQUAL");
+            }
+        }
+        auto* panes = win.findChild<sstvae::gui::PaneContainer*>();
+        if (panes != nullptr) {
+            const QSize before = win.size();
+            for (const auto m : {sstvae::gui::PaneLayout::Tabs,
+                                 sstvae::gui::PaneLayout::Split}) {
+                panes->set_mode(m);
+                for (int i = 0; i < 20; ++i) app.processEvents();
+                std::printf("  after %-5s window %dx%d\n",
+                            m == sstvae::gui::PaneLayout::Tabs ? "tabs" : "split",
+                            win.width(), win.height());
+            }
+            std::printf("  %s\n", win.size() == before
+                                       ? "round trip: size unchanged"
+                                       : "ROUND TRIP CHANGED THE WINDOW SIZE");
+        }
     }
 
     // The framing dialog, on a 16:9 source -- the case it exists for,

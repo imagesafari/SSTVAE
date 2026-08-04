@@ -108,6 +108,7 @@ NON_DEFAULT = {
         # Neither is a default: the default layout is "auto" and the
         # default waterfall height is 0 ("never dragged").
         "layout": "tabs",
+        "waterfall_height": 140,
     },
     "version": 2,
 }

@@ -1,35 +1,24 @@
-// The received picture, in a 4:3 box that fits *inside* the space it is
-// given rather than demanding space of its own.
+// The received picture: a dark viewport that fills its share of the
+// pane, with the 4:3 picture centred inside it.
 //
-// **The label is positioned by hand and is deliberately not in a
-// layout.** That is the whole point: a child in a layout pushes its
-// minimum up into the window, and three earlier attempts at a 4:3
-// preview each did that in a different way.
+// **The box is not the picture** (decided 2026-08-03). It used to be --
+// the widget was sized to exactly 4:3, so pane colour showed at the
+// sides whenever the pane was wider than the picture needed. That reads
+// as a gap someone forgot to close rather than as a choice, and it
+// forced this widget to impose a 4:3 *height cap* on the layout, which
+// is where a long run of sizing bugs came from: a cap is one more thing
+// that can fight another cap, and with two on one property whichever
+// `resizeEvent` ran last won.
 //
-//  * `heightForWidth` alone is only a *request*. A section shorter than
-//    the sum of what its children want shrinks the preview toward its
-//    minimum, and a 4:3 box came out 2.5:1.
-//  * Pinning from the *panel's* resizeEvent reads `preview_->width()`
-//    before the layout has re-run, so it pins to the previous width --
-//    a 460x90 strip.
-//  * `setFixedHeight(width * 3/4)` from the label's own resizeEvent
-//    looked right and is a **ratchet**: a fixed height is a hard
-//    minimum, so a wide pane makes a tall window that can never be
-//    shortened again. That was harmless while the splitter kept each
-//    pane narrow, and not harmless at all once a tab gives one pane the
-//    whole width -- measured at a **1405 px minimum window height on a
-//    1400 px window**, taller than the laptop panels the tabbed layout
-//    exists to fit.
+// Filling the area retires all of it. This widget asks for nothing in
+// particular, takes what the layout gives it, and centres a 4:3
+// rectangle in the middle. Two of these come out the same size when
+// their panes are the same width and the controls below them are the
+// same height -- a property of the *layout*, checkable in one place,
+// rather than an agreement between two widgets that has to be
+// maintained.
 //
-// So the aspect is enforced by *geometry*, never by a minimum: 4:3 is
-// what the box asks for (`sizeHint`) and caps itself at
-// (`setMaximumHeight`), while `minimumSizeHint` stays small. Given the
-// height, the picture is exactly 4:3 and full width, which is what it
-// has always looked like; denied it, the picture stays 4:3 and narrows,
-// which is the part that used to be impossible.
-//
-// No `Q_OBJECT`: these are plain virtual overrides with nothing for moc
-// to do.
+// No Q_OBJECT: plain virtual overrides, nothing for moc to do.
 
 #ifndef SSTVAE_GUI_PICTURE_BOX_HPP
 #define SSTVAE_GUI_PICTURE_BOX_HPP
@@ -44,16 +33,18 @@ namespace sstvae::gui {
 
 class PictureBox : public QWidget {
 public:
-    // Never smaller than this, whatever the picture's shape -- and
-    // crucially, never *larger* a minimum than this either, which is
-    // the property the ratchet broke.
+    // Small, and constant. The floor stops the box vanishing in a very
+    // short window; it deliberately does not follow the width, because
+    // a minimum that follows the width is a ratchet -- see
+    // `overlay_editor.hpp` for what that one cost.
     static constexpr int MIN_W = 160;
     static constexpr int MIN_H = 120;
 
     explicit PictureBox(const QString& text, QWidget* parent = nullptr);
 
-    // What a 4:3 picture would like, given the width we have.
-    // Preferred, not required.
+    // What a 4:3 picture would like at this width. Preferred only: the
+    // layout may give more (the surplus becomes viewport) or less (the
+    // picture narrows to stay 4:3).
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override { return QSize(MIN_W, MIN_H); }
 
@@ -61,13 +52,20 @@ public:
     // from the original rather than compounding losses.
     void set_picture(const QPixmap& picture);
 
-    // The label's rectangle within this widget. For tests: an inverted
-    // axis or a dropped centring offset still looks like a working
-    // preview until a picture is in it.
+    // The 4:3 rectangle inside this widget -- what a viewer would call
+    // "the picture", as distinct from the viewport around it. For tests:
+    // an inverted axis or a dropped centring offset still looks like a
+    // working preview until something is in it.
     QRect picture_rect() const;
 
 protected:
     void resizeEvent(QResizeEvent* event) override;
+    // Draws the viewport and, inside it, the 4:3 frame the picture will
+    // occupy. **The frame has to be visible before there is a picture**:
+    // once the box started filling the pane there was nothing on screen
+    // showing where a 640x480 would land, so an empty pane gave no clue
+    // what shape it was going to be.
+    void paintEvent(QPaintEvent* event) override;
 
 private:
     void rescale();

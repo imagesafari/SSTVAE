@@ -31,6 +31,7 @@
 #include "banner.hpp"
 #include "codec/codec.hpp"
 #include "images/images.hpp"
+#include "flow_layout.hpp"
 #include "picture_box.hpp"
 #include "settings/settings.hpp"
 #include "waterfall.hpp"
@@ -97,49 +98,49 @@ ReceivePanel::ReceivePanel(AppState* state, QWidget* parent)
 ReceivePanel::~ReceivePanel() { stop(); }
 
 void ReceivePanel::build_ui() {
-    // Waterfall on top as a full-width strip, picture below it.
+    // Picture, then a control strip -- and nothing else. The waterfall
+    // used to be at the top of this pane in its own vertical splitter;
+    // it now spans the whole window and belongs to `MainWindow`, which
+    // drives it through `attach_waterfall`.
     //
-    // This pane used to be the whole window and put the waterfall in a
-    // narrow column down the right. Beside the composer it is about
-    // 40% of the width, and a column inside that would be too narrow
-    // for the band caption or for reading where a signal sits. Stacking
-    // costs nothing the other way round: the display is already
-    // frequency-on-x and time-down-y, so a strip is the same widget in
-    // a better-shaped hole -- wider in the axis that carries the
-    // spectrum, shorter in the one that only carries history depth.
+    // The strip is the unit whose height the container matches against
+    // the transmit pane's, so everything below the picture has to be
+    // inside it. The picture then takes the rest, which is the same
+    // number on both sides.
     auto* layout = new QVBoxLayout(this);
 
     // The error tier: sticky, dismissable, and never overwritten by the
     // 500 ms status refresh below -- which is exactly what happened to
     // every receive error before (visible for at most half a second).
+    // **Over the picture, not above it.** In the layout it displaced
+    // everything below it -- so an error in one pane pushed that pane's
+    // picture down and the two stopped lining up, which is precisely
+    // what the equal-size work exists to prevent. Floating it costs no
+    // layout at all: it appears, it is dismissed, and nothing moves.
     banner_ = new ErrorBanner(this);
-    layout->addWidget(banner_);
-
-    auto* splitter = new QSplitter(Qt::Vertical, this);
-
-    waterfall_ = new Waterfall(splitter);
-
-    auto* lower = new QWidget(splitter);
-    auto* lower_layout = new QVBoxLayout(lower);
-    lower_layout->setContentsMargins(0, 0, 0, 0);
+    banner_->hide();
 
     // No inner "Picture" box: the pane itself is titled, and a group
-    // box between the layout and the label swallows the label's
-    // heightForWidth -- which is how the preview ended up 2.5:1 on a
-    // tall pane instead of the 4:3 it asks for.
-    preview_ = new PictureBox(tr("Nothing received yet"), lower);
-    // A large stretch, so spare height reaches the picture before the
-    // trailing spacer does -- and it is bounded, because the box caps
-    // itself at 4:3. Whatever the picture cannot use falls through.
-    lower_layout->addWidget(preview_, 10);
+    // box between the layout and the picture would swallow the room the
+    // picture is supposed to be taking.
+    preview_ = new PictureBox(tr("Nothing received yet"), this);
+    // Stretch 1 and no trailing spacer: the picture *is* what the spare
+    // room is for. Everything else lives in the strip below, whose
+    // height is fixed by agreement with the transmit pane.
+    layout->addWidget(preview_);
+
+    strip_ = new QWidget(this);
+    auto* lower_layout = new QVBoxLayout(strip_);
+    lower_layout->setContentsMargins(0, 0, 0, 0);
+    lower_layout->setSpacing(4);
+    QWidget* lower = strip_;
 
     status_ = new QLabel(tr("Stopped"), lower);
     // A progress-tier surface must not set a width floor. Its longest
     // line ("Receiving mode C: frame 220/220 ... de KD8XYZ") is ~400 px,
-    // and with the two panes in a splitter -- whose minimum is the sum
-    // of its children's -- every such floor is paid by the whole
-    // window. Errors go to the banner, so what clips here is progress
-    // text that is rebuilt twice a second anyway.
+    // and both panes are locked to one width, so every such floor is
+    // paid twice. Errors go to the banner, so what clips here is
+    // progress text that is rebuilt twice a second anyway.
     status_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     lower_layout->addWidget(status_);
 
@@ -157,26 +158,9 @@ void ReceivePanel::build_ui() {
     last_card_->setWordWrap(true);
     last_card_->setEnabled(false);  // reads as secondary until it has content
     lower_layout->addWidget(last_card_);
-    lower_layout->addStretch(1);
 
-    splitter->addWidget(waterfall_);
-    splitter->addWidget(lower);
-    // Spare height goes to the **picture**, not the strip.
-    //
-    // This was the other way round while the picture was pinned at 4:3
-    // by a fixed height: it could not use extra pixels, so the strip
-    // got them. The picture now fits itself to the space it is given
-    // (see `PictureBox`), and a bigger received picture is worth more
-    // than more spectrum history -- especially in a tab, where this
-    // pane has the whole window.
-    splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 1);
-    // The strip still stops growing well before that: past a few
-    // hundred pixels the extra history stops earning its space.
-    waterfall_->setMaximumHeight(360);
-    layout->addWidget(splitter, 1);
-
-    auto* controls = new QHBoxLayout();
+    // Wraps rather than crushes -- see flow_layout.hpp.
+    auto* controls = new FlowLayout();
     start_button_ = new QPushButton(tr("Start receiving"), this);
     connect(start_button_, &QPushButton::clicked, this, &ReceivePanel::start);
     stop_button_ = new QPushButton(tr("Stop"), this);
@@ -200,8 +184,30 @@ void ReceivePanel::build_ui() {
     controls->addWidget(save_button_);
     controls->addWidget(folder_button_);
     controls->addWidget(autosave_);
-    controls->addStretch(1);
-    layout->addLayout(controls);
+    // Into the strip, not the panel: the strip is the unit whose height
+    // is matched against the transmit pane's, so anything left outside
+    // it would break the equality it exists to give.
+    lower_layout->addLayout(controls);
+
+    layout->addWidget(strip_);
+}
+
+void ReceivePanel::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    place_banner();
+}
+
+void ReceivePanel::place_banner() {
+    if (banner_ == nullptr || preview_ == nullptr) return;
+    const QRect over = preview_->geometry();
+    // `heightForWidth`, not `sizeHint`: the message wraps, and a hint
+    // taken at unconstrained width is one line -- so a long device name
+    // was clipped to a sliver of its own text. Measured at the width it
+    // will actually get.
+    const int wanted = banner_->heightForWidth(over.width());
+    banner_->setGeometry(over.x(), over.y(), over.width(),
+                         std::max(banner_->sizeHint().height(), wanted));
+    banner_->raise();
 }
 
 bool ReceivePanel::listening() const { return running_.load(); }
@@ -227,16 +233,27 @@ bool ReceivePanel::start() {
 
     const settings::Config& config = app_->config();
     ring_ = std::make_shared<rx::RingBuffer>(config.receive.buffer_seconds);
-    waterfall_->set_ring(ring_);
+    if (Waterfall* w = fall()) w->set_ring(ring_);
 
     try {
         stream_ = std::make_unique<audio::qt::InputStream>(
             config.audio.input_device, *ring_, config::FS,
+            // What opened, and at what rate: information. The resampler
+            // being in the path is the normal case -- very little
+            // hardware is natively 8 kHz -- and a sticky red banner
+            // saying so told operators their setup was broken when it
+            // was working.
+            [this](const std::string& message) {
+                app_->log_event("rx", log::Severity::Info,
+                                QString::fromStdString(message));
+            },
+            // Capture actually failing: banner and log, as before. This
+            // is the half that must not be quiet.
             [this](const std::string& message) {
                 emit errorOccurred(QString::fromStdString(message));
             });
     } catch (const std::exception& e) {
-        waterfall_->set_ring(nullptr);
+        if (Waterfall* w = fall()) w->set_ring(nullptr);
         ring_.reset();
         app_->log_event("rx", log::Severity::Error,
                         tr("could not open the input device: %1")
@@ -315,7 +332,7 @@ void ReceivePanel::stop() {
     if (thread_.joinable()) thread_.join();
     running_.store(false);
 
-    if (waterfall_ != nullptr) waterfall_->set_ring(nullptr);
+    if (Waterfall* w = fall()) w->set_ring(nullptr);
     ring_.reset();
 
     if (start_button_ != nullptr) {
@@ -339,7 +356,7 @@ void ReceivePanel::suspend_for_transmit() {
     // without this it is the same picture as a wedged capture.
     set_status(tr("Paused -- transmitting"));
     preview_->setEnabled(false);
-    waterfall_->setEnabled(false);
+    if (Waterfall* w = fall()) w->setEnabled(false);
     // And the button that would undo half duplex. `stop()` re-enables
     // it on its way through, and this pane is now in front of the
     // operator for the whole over: clicking Start here would open
@@ -355,12 +372,12 @@ void ReceivePanel::resume_after_transmit() {
     if (!suspended_for_tx_) return;
     suspended_for_tx_ = false;
     preview_->setEnabled(true);
-    waterfall_->setEnabled(true);
+    if (Waterfall* w = fall()) w->setEnabled(true);
     start_button_->setEnabled(true);  // start() disables it again
     // start() allocates a fresh ring buffer, so the tail of our own
     // transmission is dropped rather than decoded back as a reception.
     start();
-    waterfall_->clear();
+    if (Waterfall* w = fall()) w->clear();
 }
 
 // --- the sink, on the decode thread -----------------------------------------
@@ -434,6 +451,10 @@ void ReceivePanel::save_audio_beside(const std::string& image_path) {
 }
 
 // --- the GUI thread ---------------------------------------------------------
+
+QWidget* ReceivePanel::picture_area() const { return preview_; }
+
+QWidget* ReceivePanel::control_strip() const { return strip_; }
 
 void ReceivePanel::set_status(const QString& text) {
     status_->setText(text);
@@ -569,6 +590,7 @@ void ReceivePanel::on_error(const QString& message) {
     // status label: that is the progress tier, the next 500 ms refresh
     // would overwrite it anyway, and a single-line label given a long
     // error inflates the panel's minimum width.
+    place_banner();
     banner_->show_error(message);
     app_->log_event("rx", log::Severity::Error, message);
 }
@@ -659,6 +681,7 @@ void ReceivePanel::fill_for_screenshot() {
     last_card_->setEnabled(true);
     save_button_->setEnabled(true);
     folder_button_->setEnabled(true);
+    place_banner();
     banner_->show_error(
         tr("could not save received image: read-only file system"));
 }

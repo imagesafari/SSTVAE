@@ -180,6 +180,12 @@ struct TransmitConfig {
 // a hard floor under the window that a small panel cannot meet, and no
 // amount of scrolling inside the panes removes it.
 struct UiConfig {
+    // How tall the spectrum strip is, in pixels. The operator drags it
+    // (2026-08-03), so this is their number and not a default anyone
+    // should tune -- 0 means "never set", which takes the initial
+    // height instead.
+    int waterfall_height = 0;
+
     // "auto" | "split" | "tabs".
     //
     // "auto" is resolved **once, at startup, against the screen** --

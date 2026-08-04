@@ -29,6 +29,8 @@
 #ifndef SSTVAE_GUI_PANE_CONTAINER_HPP
 #define SSTVAE_GUI_PANE_CONTAINER_HPP
 
+#include <QPointer>
+#include <QSize>
 #include <QString>
 #include <QWidget>
 
@@ -52,6 +54,12 @@ enum class PaneLayout {
 // off the edge if they like, and one who prefers tabs on a large screen
 // is not overruled. Only "auto" measures.
 //
+// **Both axes.** It compared width only, which was defensible while the
+// split layout's height floor was fixed. It is not once the control rows
+// wrap: the height floor then *rises* as the window narrows, so a screen
+// that is wide enough and short enough would get side by side and not
+// fit. Either axis failing is enough to choose tabs.
+//
 // **"auto" is resolved against the screen, once, and never against the
 // window's own width.** A live breakpoint reads like the obvious
 // implementation and cannot work: while side by side is in force, the
@@ -59,18 +67,41 @@ enum class PaneLayout {
 // narrow width that would trigger a switch away from it. The downward
 // transition is unreachable, so the layout would only ever get *more*
 // cramped, never less.
-PaneLayout resolve_layout(const std::string& setting, int available_width,
-                          int split_minimum_width);
+PaneLayout resolve_layout(const std::string& setting, QSize available,
+                          QSize split_minimum);
 
 class PaneContainer : public QWidget {
     Q_OBJECT
 
 public:
+    // Lower bound on each pane's width when side by side. The actual
+    // floor is the larger of this and what either pane asks for -- both
+    // panes then share one minimum, which is what makes a 1:1 stretch
+    // produce genuinely equal widths. See `build_split`.
+    static constexpr int PANE_MIN_W = 380;
+
     // `first` and `second` are shown in that order, left to right or as
     // tabs. Ownership passes to this widget's current container, and
     // survives every mode switch -- see the class comment.
     PaneContainer(QWidget* first, QString first_title, QWidget* second,
                   QString second_title, QWidget* parent = nullptr);
+
+    // The two panes' control strips, held to the same height.
+    //
+    // **This is how the pictures end up equal**, and it is the whole
+    // mechanism. The panes are already locked to the same width; make
+    // the controls beneath them the same height and each picture gets
+    // `pane - strip`, the same number on both sides, without anything
+    // being cut down to match.
+    //
+    // The approach this replaced measured the two *pictures* and shrank
+    // the larger to the smaller. That produced equal pictures and threw
+    // away the space it took -- 650x480 where 970x727 was available,
+    // the difference showing as grey margin. Equalising the thing that
+    // actually differs is both smaller and better.
+    //
+    // Optional: a test may drive this class with plain widgets.
+    void set_control_strips(QWidget* first_strip, QWidget* second_strip);
 
     PaneLayout mode() const { return mode_; }
     void set_mode(PaneLayout mode);
@@ -83,7 +114,17 @@ public:
 signals:
     void modeChanged(PaneLayout mode);
 
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
+
 private:
+    // Give both strips the taller one's height. Cheap and idempotent,
+    // so it can be called again whenever a caption or a font could have
+    // changed the answer.
+    void equalise_strips();
+
+
     QWidget* build_split();
     QWidget* build_tabs();
     // Make `container` the one on screen. The explicit `show()` inside
@@ -101,10 +142,13 @@ private:
 
     QWidget* first_ = nullptr;
     QWidget* second_ = nullptr;
+    QPointer<QWidget> first_strip_;
+    QPointer<QWidget> second_strip_;
     QString first_title_;
     QString second_title_;
     QString first_note_;
 
+    bool equalise_queued_ = false;
     PaneLayout mode_ = PaneLayout::Split;
 };
 

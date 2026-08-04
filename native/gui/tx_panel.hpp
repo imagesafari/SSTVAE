@@ -63,6 +63,11 @@ public:
     ~TransmitPanel() override;
 
     bool transmitting() const;
+    // The 4:3 canvas. Read by tests and by the screenshot tool.
+    QWidget* picture_area() const;
+    // Everything below the canvas, as one widget, so the container can
+    // hold it to the same height as the receive pane's strip.
+    QWidget* control_strip() const;
 
 public slots:
     void send();
@@ -102,6 +107,10 @@ protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
 
+protected:
+    // Only to keep the error banner sitting over the top of the picture.
+    void resizeEvent(QResizeEvent* event) override;
+
 private slots:
     void on_optimizer_progress();
     void on_state(int phase, double progress, const QString& message);
@@ -113,6 +122,8 @@ private slots:
 
 private:
     void build_ui();
+    // Keeps the floating error banner across the top of the picture.
+    void place_banner();
     // Paint the current text colour onto the Colour button.
     void set_color_swatch(const QColor& color);
     // True while the picture is committed to a send in progress.
@@ -127,7 +138,7 @@ private:
     void begin_transmit(const images::Picture& picture,
                         std::vector<double> latents);
     void rebuild_optimizer();
-    QWidget* build_side_panel();
+    QWidget* build_tool_row();
     QGroupBox* build_properties(QWidget* parent);
     QWidget* build_send_bar();
     void update_level_label();
@@ -149,6 +160,7 @@ private:
     QString source_path_;
     images::Framing framing_;
 
+    QWidget* strip_ = nullptr;
     QGroupBox* properties_ = nullptr;
     QPlainTextEdit* text_edit_ = nullptr;
     QComboBox* align_combo_ = nullptr;

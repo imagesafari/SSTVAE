@@ -10,6 +10,9 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QActionGroup>
+#include <QPainter>
+#include <QSplitter>
+#include <QSplitterHandle>
 #include <QMessageBox>
 #include <QScreen>
 #include <QStatusBar>
@@ -17,9 +20,12 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include <algorithm>
+
 #include "app_state.hpp"
 #include "log_pane.hpp"
 #include "pane_container.hpp"
+#include "waterfall.hpp"
 #include "rig/hamlib.hpp"
 #include "rx_panel.hpp"
 #include "settings_dialog.hpp"
@@ -32,6 +38,54 @@ namespace {
 
 constexpr auto APP_NAME = "SSTVAE";
 
+// The spectrum strip before anyone has dragged it. Deliberately
+// shallow: at 150 px most of it was black most of the time, and the
+// height is worth more to the pictures.
+constexpr int DEFAULT_WATERFALL_H = 96;
+
+// A splitter handle that looks like one.
+//
+// Qt's default handle is a flat gap: on a dark theme it is invisible,
+// so the waterfall was resizable with nothing on screen saying so. Three
+// short dashes in the middle is the plain desktop idiom for a grip, and
+// painting it keeps us out of stylesheets -- one stylesheet anywhere
+// makes Qt wrap the application style and strips the padding from every
+// combo and spin box in the app.
+class GripHandle : public QSplitterHandle {
+public:
+    GripHandle(Qt::Orientation orientation, QSplitter* parent)
+        : QSplitterHandle(orientation, parent) {
+        setCursor(orientation == Qt::Horizontal ? Qt::SplitHCursor : Qt::SplitVCursor);
+    }
+
+protected:
+    void paintEvent(QPaintEvent* event) override {
+        QSplitterHandle::paintEvent(event);
+        QPainter painter(this);
+        painter.setPen(QPen(palette().color(QPalette::Mid), 1));
+        const int cx = width() / 2;
+        const int cy = height() / 2;
+        // Three marks, 6 px long, 3 px apart, across the drag axis.
+        for (int i = -1; i <= 1; ++i) {
+            if (orientation() == Qt::Vertical) {
+                painter.drawLine(cx - 12 + i * 12, cy, cx - 6 + i * 12, cy);
+            } else {
+                painter.drawLine(cx, cy - 12 + i * 12, cx, cy - 6 + i * 12);
+            }
+        }
+    }
+};
+
+class GripSplitter : public QSplitter {
+public:
+    using QSplitter::QSplitter;
+
+protected:
+    QSplitterHandle* createHandle() override {
+        return new GripHandle(orientation(), this);
+    }
+};
+
 }  // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -42,8 +96,24 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // The height is unchanged from the tabbed window.
     resize(1360, 800);
 
+    // **The spectrum spans the whole window, above both panes** -- and
+    // above the *tab widget* too, so it is on screen in both layouts.
+    // It is the one widget here whose job is resolving detail across a
+    // frequency axis, and inside the receive pane it had about a third
+    // of the width to do it in. The receive panel still drives it (it
+    // owns the ring buffer), so ownership moved and control did not.
+    //
+    // Keeping it outside the tabs is deliberate: tabs exist for a
+    // narrow screen, and what you give up there is seeing the band
+    // while you compose. The strip is the cheapest way to keep it.
+    waterfall_ = new Waterfall(this);
+    // A floor, and no ceiling: the operator sets the height now, and a
+    // maximum would silently ignore a value they had chosen.
+    waterfall_->setMinimumHeight(60);
+
     rx_panel_ = new ReceivePanel(state_);
     tx_panel_ = new TransmitPanel(state_);
+    rx_panel_->attach_waterfall(waterfall_);
 
     // **Each pane is named.** The tabs this replaced carried the only
     // labels that said which half was which, and dropping them left two
@@ -57,6 +127,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // what lets the same two words be a group-box title in one layout
     // and a tab label in the other.
     panes_ = new PaneContainer(rx_panel_, tr("Receive"), tx_panel_, tr("Transmit"), this);
+    // Equal panes are not equal pictures on their own -- the two halves
+    // carry different controls beneath. Matching the *strips* is what
+    // makes the pictures match, without taking space off either.
+    panes_->set_control_strips(rx_panel_->control_strip(),
+                               tx_panel_->control_strip());
 
     // Half duplex: our own transmission must not be decoded back into a
     // received picture. Frequency polling pauses too -- the answer is
@@ -73,7 +148,30 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // The most recent picture becomes available as a transmit inset.
     connect(rx_panel_, &ReceivePanel::imageReceived, tx_panel_,
             &TransmitPanel::set_last_rx_image);
-    setCentralWidget(panes_);
+    // **The waterfall's height is the operator's** (decided
+    // 2026-08-03). A fixed strip was the alternative and the
+    // recommendation; a handle won because 150 px is too much most of
+    // the time and not enough occasionally, and something set once
+    // costs nothing afterwards. The position is remembered in
+    // `ui.waterfall_height`.
+    //
+    // A vertical handle here is unrelated to the horizontal one that
+    // was removed to lock the panes equal -- that one decided which
+    // pane won, and this one only decides how much spectrum history is
+    // on screen.
+    stack_ = new GripSplitter(Qt::Vertical, this);
+    stack_->addWidget(waterfall_);
+    stack_->addWidget(panes_);
+    stack_->setStretchFactor(0, 0);
+    stack_->setStretchFactor(1, 1);
+    // Neither half may be dragged out of existence: a waterfall of zero
+    // height reads as a broken capture, and the panes are the app.
+    stack_->setChildrenCollapsible(false);
+    stack_->setHandleWidth(6);
+    setCentralWidget(stack_);
+    restore_waterfall_height();
+    connect(stack_, &QSplitter::splitterMoved, this,
+            [this](int, int) { remember_waterfall_height(); });
 
     build_menu();
     build_status_bar();
@@ -109,6 +207,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     on_layout_changed(panes_->mode());
 
     panes_->set_mode(startup_layout());
+    // After the layout is chosen, since the chosen one decides the size.
+    fit_to_screen();
 
     state_->load_model_async();
     state_->connect_rig();
@@ -173,24 +273,53 @@ void MainWindow::build_layout_menu() {
 }
 
 PaneLayout MainWindow::startup_layout() const {
-    // What the splitter arrangement actually needs, measured rather
-    // than guessed: the panels' minimums move whenever either panel
-    // gains a control, and a hardcoded breakpoint would silently stop
-    // matching the layout it was chosen for.
-    const int required = panes_->minimumSizeHint().width();
-    const QScreen* screen = this->screen();
-    const int available = screen != nullptr ? screen->availableGeometry().width() : 0;
+    // What the side-by-side arrangement actually needs, measured rather
+    // than guessed: the panels' minimums move whenever either gains a
+    // control, and a hardcoded breakpoint would silently stop matching
+    // the layout it was chosen for.
+    const QSize required = panes_->minimumSizeHint();
+    const QSize available = available_screen();
     const PaneLayout mode =
         resolve_layout(state_->config().ui.layout, available, required);
     if (mode == PaneLayout::Tabs && state_->config().ui.layout == "auto") {
+        // Which axis, and by how much. "Starting in tabs" on its own
+        // reads as an arbitrary decision; the numbers make it checkable
+        // and tell the operator what would have to change.
         state_->log_event(
             "app", log::Severity::Info,
-            tr("screen is %1 px wide and side by side needs %2; starting in tabs "
+            tr("screen is %1x%2 and side by side needs %3x%4; starting in tabs "
                "(View > Layout)")
-                .arg(available)
-                .arg(required));
+                .arg(available.width())
+                .arg(available.height())
+                .arg(required.width())
+                .arg(required.height()));
     }
     return mode;
+}
+
+QSize MainWindow::available_screen() const {
+    const QScreen* screen = this->screen();
+    return screen != nullptr ? screen->availableGeometry().size() : QSize();
+}
+
+void MainWindow::fit_to_screen() {
+    const QSize available = available_screen();
+    if (!available.isValid()) return;
+    // **The window may not open larger than the screen.** If it does,
+    // the menu bar goes off the edge with everything else, so View >
+    // Layout -- the way out of a layout that does not fit -- cannot be
+    // reached from inside the application at all. That is what an
+    // operator actually hit.
+    const QSize want = size();
+    const QSize fitted = want.boundedTo(available);
+    if (fitted == want) return;
+    resize(fitted);
+    state_->log_event("app", log::Severity::Info,
+                      tr("window would not fit the %1x%2 screen; opened at %3x%4")
+                          .arg(available.width())
+                          .arg(available.height())
+                          .arg(fitted.width())
+                          .arg(fitted.height()));
 }
 
 void MainWindow::on_layout_changed(PaneLayout mode) {
@@ -268,6 +397,35 @@ void MainWindow::build_menu() {
     connect(about, &QAction::triggered, this, &MainWindow::show_about);
 }
 
+void MainWindow::restore_waterfall_height() {
+    const int wanted = state_->config().ui.waterfall_height;
+    // 0 means the operator has never dragged it. Qt's own initial split
+    // is a reasonable first answer, so leave it alone rather than
+    // inventing a default that would then look like a chosen value.
+    // Never dragged: pick a shallow default rather than letting Qt
+    // split the window evenly. The strip only needs enough rows to see
+    // a signal arrive -- history is what the handle is for.
+    const int height = wanted > 0 ? wanted : DEFAULT_WATERFALL_H;
+    const int total = stack_->height();
+    // Before the window is shown `height()` is not meaningful yet; the
+    // sizes are applied anyway and Qt scales them to the real height on
+    // the first layout, which is what makes this work from a
+    // constructor.
+    const int rest = std::max(1, total - height);
+    stack_->setSizes({height, rest});
+}
+
+void MainWindow::remember_waterfall_height() {
+    const QList<int> sizes = stack_->sizes();
+    if (sizes.isEmpty()) return;
+    if (state_->config().ui.waterfall_height == sizes.front()) return;
+    state_->config().ui.waterfall_height = sizes.front();
+    // Saved on the drag rather than at exit: an app that is killed --
+    // or that crashes in a backend -- still owes the operator the
+    // layout they set.
+    state_->save_config();
+}
+
 void MainWindow::show_about() {
     // The version of the *library that talks to the radio* matters as
     // much as ours: "which Hamlib" is the first question any rig
@@ -333,6 +491,13 @@ void MainWindow::build_log_dock() {
     connect(state_, &AppState::logEntry, log_pane_, &LogPane::append);
 
     log_dock_ = new QDockWidget(tr("Status log"), this);
+    // **One row, not two.** A QDockWidget's own title bar is a full row
+    // of height carrying nothing but a word and a close button, and the
+    // pane already had a row of its own for the filter and Copy. At the
+    // bottom of the window those two rows cost more than the log they
+    // introduce. The pane's row becomes the title bar, with the name
+    // and the close button folded into it.
+    log_dock_->setTitleBarWidget(log_pane_->take_title_row(tr("Status log"), log_dock_));
     // Closable so it can be put away; not floatable or movable -- it is
     // a log strip, not a tool window, and the bottom is its place.
     log_dock_->setFeatures(QDockWidget::DockWidgetClosable);
